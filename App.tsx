@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { MacWindow } from './components/MacWindow.tsx';
 import { DocForm } from './components/DocForm.tsx';
@@ -37,6 +38,7 @@ const openDB = (): Promise<IDBDatabase> => {
       }
     };
     request.onsuccess = () => resolve(request.result);
+    // Fix: replaced undefined variable 'error' with 'request.error' which contains the DOMException for IndexedDB requests
     request.onerror = () => reject(request.error);
   });
 };
@@ -256,37 +258,57 @@ const App: React.FC = () => {
   return (
     <div className="flex flex-col h-screen w-screen font-sans overflow-hidden bg-gradient-to-br from-[#1e3a8a] via-[#581c87] to-[#1e1b4b] relative">
       
-      {/* Menu Bar - Fixed Top */}
-      <div className="flex-none z-[100] flex h-7 items-center justify-between bg-white/10 px-4 text-[13px] font-bold text-white backdrop-blur-3xl border-b border-white/5">
-        <div className="flex items-center gap-4">
-          <div className="flex items-center gap-2">
-            <School size={14} strokeWidth={3} />
-            <span className="font-extrabold uppercase hidden sm:inline">SMPN 3 PACET</span>
-            <span className="font-extrabold uppercase sm:hidden">SPEN3</span>
+      {/* Menu Bar - Taller and More Visible for Tablet/Mobile */}
+      <header className="flex-none z-[100] flex h-9 md:h-10 items-center justify-between bg-black/30 md:bg-white/10 px-4 text-[13px] font-bold text-white backdrop-blur-3xl border-b border-white/5">
+        <div className="flex items-center gap-3 md:gap-4 overflow-hidden">
+          {/* School Name - Dynamic font size */}
+          <div className="flex items-center gap-2 shrink-0">
+            <School size={16} strokeWidth={3} className="text-white" />
+            <span className="font-extrabold uppercase tracking-tight text-[11px] md:text-[13px] whitespace-nowrap">
+              <span className="md:inline hidden">SMPN 3 PACET</span>
+              <span className="md:hidden inline">SPEN3 PACET</span>
+            </span>
           </div>
-          <div className="flex items-center gap-2 px-2 py-0.5 rounded cursor-pointer transition-all" onClick={() => setShowDiagnostic(true)}>
-            {isSyncing || isLoading ? <RefreshCw size={10} className="animate-spin text-blue-300" /> : <CheckCircle2 size={11} className={error ? 'text-orange-400' : 'text-green-400'} />}
-            <span className="text-[9px] uppercase tracking-widest opacity-80 font-black">{isSyncing ? 'Sync' : error ? 'Offline' : 'Online'}</span>
-          </div>
-        </div>
-        <div className="flex items-center gap-3">
-          <Wifi size={14} /><Battery size={16} /><span className="text-[11px] font-black tabular-nums">{time.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })}</span>
-        </div>
-      </div>
 
-      {/* Main Content Area - Flexible height to prevent clipping */}
+          {/* Status Badge - Higher contrast and better spacing */}
+          <div 
+            className="flex items-center gap-2 px-2.5 py-1 rounded-full bg-white/10 hover:bg-white/20 cursor-pointer transition-all border border-white/10" 
+            onClick={() => setShowDiagnostic(true)}
+          >
+            {isSyncing || isLoading ? (
+              <RefreshCw size={11} className="animate-spin text-blue-300" />
+            ) : (
+              <CheckCircle2 size={12} className={error ? 'text-orange-400' : 'text-green-400'} />
+            )}
+            <span className="text-[10px] uppercase tracking-widest font-black leading-none">
+              {isSyncing ? 'Syncing' : error ? 'Offline' : 'Online'}
+            </span>
+          </div>
+        </div>
+
+        {/* Right Info - Time & Icons */}
+        <div className="flex items-center gap-2 md:gap-3 shrink-0">
+          <Wifi size={14} className="opacity-80 md:opacity-100" />
+          <Battery size={16} className="opacity-80 md:opacity-100" />
+          <span className="text-[11px] md:text-[12px] font-black tabular-nums tracking-tighter">
+            {time.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })}
+          </span>
+        </div>
+      </header>
+
+      {/* Main Content Area */}
       <main className="flex-1 min-h-0 flex items-center justify-center relative p-3 sm:p-4 md:p-8 lg:p-10 pb-20 md:pb-24 overflow-hidden">
         <div className="w-full h-full max-w-7xl animate-scale-in">
           <MacWindow 
             title={editingId ? "EDITOR" : (view === 'list' ? "PUSTAKA" : "ENTRY BARU")}
             navigation={
               <div className="flex items-center justify-between w-full gap-2">
-                <div className="flex items-center gap-1 bg-black/5 p-1 rounded-xl">
-                  <button onClick={() => setView('list')} className={`px-3 md:px-4 py-1.5 rounded-lg text-[11px] md:text-xs font-bold transition-all ${view === 'list' ? 'bg-[#007AFF] text-white shadow-md' : 'text-gray-600 hover:bg-black/5'}`}>Gallery</button>
-                  <button onClick={() => { setView('form'); setEditingId(null); }} className={`px-3 md:px-4 py-1.5 rounded-lg text-[11px] md:text-xs font-bold transition-all ${view === 'form' ? 'bg-[#007AFF] text-white shadow-md' : 'text-gray-600 hover:bg-black/5'}`}>Tambah</button>
+                <div className="flex items-center gap-1 bg-black/5 p-1 rounded-xl overflow-x-auto no-scrollbar">
+                  <button onClick={() => setView('list')} className={`whitespace-nowrap px-3 md:px-4 py-1.5 rounded-lg text-[11px] md:text-xs font-bold transition-all ${view === 'list' ? 'bg-[#007AFF] text-white shadow-md' : 'text-gray-600 hover:bg-black/5'}`}>Gallery</button>
+                  <button onClick={() => { setView('form'); setEditingId(null); }} className={`whitespace-nowrap px-3 md:px-4 py-1.5 rounded-lg text-[11px] md:text-xs font-bold transition-all ${view === 'form' ? 'bg-[#007AFF] text-white shadow-md' : 'text-gray-600 hover:bg-black/5'}`}>Tambah</button>
                 </div>
-                <div className="flex items-center gap-2 md:gap-4">
-                   <div className="hidden sm:block px-3 py-1 bg-black/5 rounded-lg text-[10px] font-black text-gray-400 uppercase">{items.length} ITEM</div>
+                <div className="flex items-center gap-2 md:gap-4 shrink-0">
+                   <div className="hidden sm:block px-3 py-1 bg-black/5 rounded-lg text-[10px] font-black text-gray-400 uppercase tracking-tighter">{items.length} ITEM</div>
                    <button onClick={() => setCurrentPage('home')} className="p-1.5 rounded-lg text-red-500 hover:bg-red-50 transition-colors"><Home size={18} /></button>
                 </div>
               </div>
@@ -295,7 +317,7 @@ const App: React.FC = () => {
             {isLoading && items.length === 0 ? (
               <div className="flex h-full w-full flex-col items-center justify-center gap-4">
                 <div className="h-10 w-10 border-4 border-blue-100 border-t-blue-500 rounded-full animate-spin"></div>
-                <span className="text-[10px] font-black text-gray-400 uppercase tracking-[0.2em]">Memuat...</span>
+                <span className="text-[10px] font-black text-gray-400 uppercase tracking-[0.2em]">Memuat Database...</span>
               </div>
             ) : (
               view === 'list' ? (
@@ -308,27 +330,27 @@ const App: React.FC = () => {
         </div>
       </main>
 
-      {/* Dock - Responsive placement */}
-      <div className="absolute bottom-4 left-1/2 -translate-x-1/2 z-[110] flex items-end gap-2 md:gap-3 rounded-[2rem] bg-white/20 p-2 shadow-2xl backdrop-blur-3xl border border-white/20 ring-1 ring-black/5 scale-90 md:scale-100">
+      {/* Dock */}
+      <div className="absolute bottom-4 left-1/2 -translate-x-1/2 z-[110] flex items-end gap-2 md:gap-3 rounded-[2rem] bg-white/20 p-2 shadow-2xl backdrop-blur-3xl border border-white/20 ring-1 ring-black/5 scale-[0.85] sm:scale-90 md:scale-100 origin-bottom">
         <button onClick={() => setCurrentPage('home')} className="flex h-11 w-11 md:h-12 md:w-12 items-center justify-center rounded-xl bg-white/40 shadow-lg transition-all hover:scale-125 hover:-translate-y-2"><Home size={22} className="text-blue-500"/></button>
         <div className="h-10 w-px bg-white/20 mx-1"></div>
-        <button onClick={() => setView('list')} className={`flex h-11 w-11 md:h-12 md:w-12 items-center justify-center rounded-xl bg-white/40 shadow-lg transition-all hover:scale-125 hover:-translate-y-2 ${view === 'list' ? 'ring-2 ring-white' : ''}`}><ImageIcon size={22} className="text-emerald-500"/></button>
-        <button onClick={() => { setView('form'); setEditingId(null); }} className={`flex h-11 w-11 md:h-12 md:w-12 items-center justify-center rounded-xl bg-white/40 shadow-lg transition-all hover:scale-125 hover:-translate-y-2 ${view === 'form' ? 'ring-2 ring-white' : ''}`}><PlusCircle size={22} className="text-violet-500"/></button>
+        <button onClick={() => setView('list')} className={`flex h-11 w-11 md:h-12 md:w-12 items-center justify-center rounded-xl bg-white/40 shadow-lg transition-all hover:scale-125 hover:-translate-y-2 ${view === 'list' ? 'ring-2 ring-white shadow-xl' : ''}`}><ImageIcon size={22} className="text-emerald-500"/></button>
+        <button onClick={() => { setView('form'); setEditingId(null); }} className={`flex h-11 w-11 md:h-12 md:w-12 items-center justify-center rounded-xl bg-white/40 shadow-lg transition-all hover:scale-125 hover:-translate-y-2 ${view === 'form' ? 'ring-2 ring-white shadow-xl' : ''}`}><PlusCircle size={22} className="text-violet-500"/></button>
         <div className="h-10 w-px bg-white/20 mx-1"></div>
         <button onClick={fetchDataFromCloud} className="flex h-11 w-11 md:h-12 md:w-12 items-center justify-center rounded-xl bg-white/40 shadow-lg transition-all hover:scale-125 hover:-translate-y-2"><RefreshCw size={22} className="text-amber-500"/></button>
       </div>
 
       {showDiagnostic && (
-        <div className="absolute top-10 left-1/2 -translate-x-1/2 md:left-4 md:translate-x-0 z-[150] w-[90%] md:w-80 p-5 bg-white/95 backdrop-blur-2xl rounded-3xl shadow-2xl border border-black/10 animate-scale-in">
+        <div className="absolute top-12 left-1/2 -translate-x-1/2 md:left-4 md:translate-x-0 z-[150] w-[90%] md:w-80 p-5 bg-white/95 backdrop-blur-2xl rounded-3xl shadow-2xl border border-black/10 animate-scale-in">
           <div className="flex items-center justify-between mb-4">
-            <h3 className="text-[11px] font-black uppercase text-gray-500">Status Database</h3>
-            <button onClick={() => setShowDiagnostic(false)} className="text-gray-400"><X size={18}/></button>
+            <h3 className="text-[11px] font-black uppercase text-gray-500">Pusat Informasi Cloud</h3>
+            <button onClick={() => setShowDiagnostic(false)} className="text-gray-400 hover:text-black transition-colors"><X size={18}/></button>
           </div>
           <div className="bg-black/5 p-4 rounded-2xl mb-4">
-            <p className="text-[10px] font-black text-gray-400 mb-1 uppercase tracking-widest">Koneksi</p>
-            <p className={`text-xs font-bold ${error ? 'text-red-600' : 'text-green-600'}`}>{error ? 'Offline' : 'Sinkron Aktif'}</p>
+            <p className="text-[10px] font-black text-gray-400 mb-1 uppercase tracking-widest">Koneksi Sistem</p>
+            <p className={`text-xs font-bold ${error ? 'text-red-600' : 'text-green-600'}`}>{error ? 'Terputus (Offline)' : 'Tersambung (Aktif)'}</p>
           </div>
-          <button onClick={() => { fetchDataFromCloud(); setShowDiagnostic(false); }} className="w-full bg-blue-600 text-white text-[11px] font-black py-3 rounded-2xl hover:bg-blue-700 shadow-xl shadow-blue-500/30 uppercase tracking-widest transition-all active:scale-95">Refresh Cloud</button>
+          <button onClick={() => { fetchDataFromCloud(); setShowDiagnostic(false); }} className="w-full bg-blue-600 text-white text-[11px] font-black py-3 rounded-2xl hover:bg-blue-700 shadow-xl shadow-blue-500/30 uppercase tracking-widest transition-all active:scale-95">Paksa Sinkron Ulang</button>
         </div>
       )}
     </div>
