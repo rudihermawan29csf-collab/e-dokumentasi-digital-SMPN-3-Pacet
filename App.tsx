@@ -13,17 +13,15 @@ import {
   Search as SearchIcon, 
   Settings,
   Image as ImageIcon,
-  CloudUpload,
   CheckCircle2,
   RefreshCw,
   AlertCircle,
   LayoutGrid,
-  Info,
   X
 } from 'lucide-react';
 
-// Link yang Anda berikan
-const SCRIPT_URL = "https://script.google.com/macros/s/AKfycbytEzkDrH7A30Igmy5G1lv5z9mEHSXDqRMeHn7BsNa7Cvs5JiJ2DfaR9F2SXcW6L6kE/exec"; 
+// URL WEB APP BARU DARI USER
+const SCRIPT_URL = "https://script.google.com/macros/s/AKfycbwS_ZiNHJH214i_u8AF7BuZWXZopIG6YThNr96jx5pAJ_z7HBI0W0wuCER7ea1xEzQulw/exec"; 
 
 const fileToBase64 = (file: File): Promise<string> => {
   return new Promise((resolve, reject) => {
@@ -70,7 +68,7 @@ const DockIcon: React.FC<{
       }`}
     >
       <div className="transition-transform group-hover:scale-110">
-        {React.cloneElement(icon as React.ReactElement, { size: 24 })}
+        {React.isValidElement(icon) ? React.cloneElement(icon as React.ReactElement<any>, { size: 24 }) : icon}
       </div>
     </button>
   </div>
@@ -90,38 +88,33 @@ const App: React.FC = () => {
   const fetchDataFromCloud = useCallback(async () => {
     if (!SCRIPT_URL) return;
     setIsLoading(true);
+    setError(null);
     
     try {
-      const cacheBuster = `?t=${Date.now()}`;
-      const response = await fetch(SCRIPT_URL + cacheBuster, {
+      // Menggunakan fetch dengan redirect follow untuk Google Apps Script
+      const response = await fetch(SCRIPT_URL, {
         method: 'GET',
-        redirect: 'follow'
+        redirect: 'follow',
       });
       
       if (!response.ok) throw new Error(`HTTP ${response.status}`);
       
-      const contentType = response.headers.get("content-type");
-      if (contentType && contentType.includes("text/html")) {
-        throw new Error("Izin Akses Ditolak");
-      }
-
       const data = await response.json();
       
       if (Array.isArray(data)) {
         setItems(data);
-        localStorage.setItem('smpn3_docs', JSON.stringify(data));
-        setError(null);
+        localStorage.setItem('smpn3_docs_local_v2', JSON.stringify(data));
       } else {
-        throw new Error("Format Data Salah");
+        throw new Error("Data cloud tidak dalam format yang benar");
       }
     } catch (err: any) {
-      console.warn("Connectivity diagnostic:", err.message);
-      const saved = localStorage.getItem('smpn3_docs');
+      console.error("Connection Error:", err);
+      const saved = localStorage.getItem('smpn3_docs_local_v2');
       if (saved) {
         setItems(JSON.parse(saved));
-        setError(err.message === "Izin Akses Ditolak" ? "Izin Cloud Ditolak" : "Mode Offline");
+        setError("Bekerja Offline (Data Lokal)");
       } else {
-        setError("Gagal Terhubung");
+        setError("Gagal Terhubung ke Cloud. Periksa Deployment.");
       }
     } finally {
       setIsLoading(false);
@@ -140,20 +133,25 @@ const App: React.FC = () => {
     if (!SCRIPT_URL) return false;
     setIsSyncing(true);
     try {
+      // Mengirim data menggunakan POST. 
+      // Menggunakan mode 'no-cors' seringkali diperlukan untuk menghindari isu CORS preflight dengan Google Apps Script.
       await fetch(SCRIPT_URL, {
         method: 'POST',
         mode: 'no-cors',
         headers: {
-          'Content-Type': 'text/plain;charset=utf-8',
+          'Content-Type': 'text/plain',
         },
         body: JSON.stringify({ action, data })
       });
       return true;
     } catch (error) {
-      console.error("Sync failure:", error);
+      console.error("Sync error:", error);
       return false;
     } finally {
-      setTimeout(() => setIsSyncing(false), 1500);
+      // Tunggu sebentar untuk memberi kesan sinkronisasi
+      setTimeout(() => setIsSyncing(false), 2000);
+      // Refresh data setelah beberapa detik agar cloud dan lokal sinkron
+      setTimeout(fetchDataFromCloud, 3000);
     }
   };
 
@@ -168,12 +166,7 @@ const App: React.FC = () => {
           name: f.file.name 
         };
       }
-      return {
-        id: f.id,
-        url: f.url,
-        type: f.type,
-        name: f.name || 'file'
-      };
+      return f;
     }));
   };
 
@@ -182,7 +175,7 @@ const App: React.FC = () => {
     try {
       const processedFiles = await processFilesForCloud(formData.files);
       const newItem: DocumentationItem = {
-        id: 'DOC-' + Math.random().toString(36).substr(2, 6).toUpperCase(),
+        id: 'SPN3-' + Date.now().toString(36).toUpperCase(),
         createdAt: Date.now(),
         ...formData,
         files: processedFiles
@@ -190,14 +183,12 @@ const App: React.FC = () => {
       
       const newItems = [newItem, ...items];
       setItems(newItems);
-      localStorage.setItem('smpn3_docs', JSON.stringify(newItems));
+      localStorage.setItem('smpn3_docs_local_v2', JSON.stringify(newItems));
       setView('list');
       
-      const success = await syncToSpreadsheet(newItem, 'add');
-      if (!success) setError("Tersimpan Lokal (Cloud Gagal)");
-      
+      await syncToSpreadsheet(newItem, 'add');
     } catch (e) {
-      alert("Gagal memproses data.");
+      alert("Error saat menyimpan data.");
     } finally {
       setIsLoading(false);
     }
@@ -219,7 +210,7 @@ const App: React.FC = () => {
       
       const newItems = items.map(item => item.id === editingId ? updatedItem : item);
       setItems(newItems);
-      localStorage.setItem('smpn3_docs', JSON.stringify(newItems));
+      localStorage.setItem('smpn3_docs_local_v2', JSON.stringify(newItems));
       setEditingId(null);
       setView('list');
       
@@ -234,11 +225,11 @@ const App: React.FC = () => {
   const handleDelete = async (id: string) => {
     const password = prompt('Sandi Admin (admin123):');
     if (password === 'admin123') {
-      if (window.confirm('Hapus dari Pustaka & Cloud?')) {
+      if (window.confirm('Hapus selamanya dari Cloud & Lokal?')) {
         const itemToDelete = items.find(i => i.id === id);
         const newItems = items.filter(item => item.id !== id);
         setItems(newItems);
-        localStorage.setItem('smpn3_docs', JSON.stringify(newItems));
+        localStorage.setItem('smpn3_docs_local_v2', JSON.stringify(newItems));
         if (itemToDelete) await syncToSpreadsheet(itemToDelete, 'delete');
       }
     } else if (password !== null) {
@@ -260,22 +251,22 @@ const App: React.FC = () => {
         <div className="flex items-center gap-4">
           <div className="flex items-center gap-2 px-2 hover:bg-white/10 rounded cursor-default transition-colors">
             <School size={14} strokeWidth={3} />
-            <span className="font-extrabold tracking-tight">SMPN 3 PACET</span>
+            <span className="font-extrabold tracking-tight uppercase">SMPN 3 PACET</span>
           </div>
           
           <div 
-            className={`flex items-center gap-2 px-2 py-0.5 rounded hover:bg-white/10 cursor-pointer transition-all ${error ? 'animate-pulse' : ''}`}
-            onClick={() => setShowDiagnostic(!showDiagnostic)}
+            className="flex items-center gap-2 px-2 py-0.5 rounded hover:bg-white/10 cursor-pointer transition-all"
+            onClick={() => setShowDiagnostic(true)}
           >
-            {isLoading ? (
+            {isSyncing || isLoading ? (
               <RefreshCw size={12} className="animate-spin text-blue-300" />
             ) : error ? (
-              <AlertCircle size={13} className={error === 'Mode Offline' ? 'text-orange-400' : 'text-red-400'} />
+              <AlertCircle size={13} className="text-orange-400" />
             ) : (
               <CheckCircle2 size={13} className="text-green-400" />
             )}
-            <span className="text-[10px] uppercase tracking-widest opacity-80">
-              {isLoading ? 'Syncing' : error ? error : 'Cloud Active'}
+            <span className="text-[10px] uppercase tracking-widest opacity-80 font-black">
+              {isSyncing ? 'Sinkron Cloud' : isLoading ? 'Loading' : error ? 'Cloud Offline' : 'Cloud Aktif'}
             </span>
           </div>
         </div>
@@ -291,23 +282,28 @@ const App: React.FC = () => {
       </div>
 
       {/* Diagnostic Panel */}
-      {showDiagnostic && error && (
-        <div className="absolute top-10 left-4 z-[110] w-72 p-4 bg-white/90 backdrop-blur-2xl rounded-2xl shadow-2xl border border-black/10 animate-scale-in">
-          <div className="flex items-center justify-between mb-3">
-            <h3 className="text-xs font-black uppercase text-gray-500 tracking-widest">Diagnostic Tool</h3>
-            <button onClick={() => setShowDiagnostic(false)}><X size={14}/></button>
+      {showDiagnostic && (
+        <div className="absolute top-10 left-4 z-[110] w-80 p-5 bg-white/95 backdrop-blur-2xl rounded-3xl shadow-2xl border border-black/10 animate-scale-in">
+          <div className="flex items-center justify-between mb-4">
+            <h3 className="text-[11px] font-black uppercase text-gray-500 tracking-[0.2em]">Pusat Kontrol Cloud</h3>
+            <button onClick={() => setShowDiagnostic(false)} className="text-gray-400 hover:text-black"><X size={18}/></button>
           </div>
-          <p className="text-sm font-bold text-red-600 mb-2">Masalah: {error}</p>
-          <div className="space-y-2 text-[11px] text-gray-700 leading-relaxed font-medium bg-black/5 p-3 rounded-xl">
-            <p>1. Pastikan Apps Script diatur ke <span className="font-black text-blue-600">"Anyone"</span>.</p>
-            <p>2. Pastikan Anda sudah klik <span className="font-black">Deploy</span> baru setelah update.</p>
-            <p>3. Cek apakah kuota harian Google tercapai.</p>
+          <div className="space-y-4">
+            <div className="bg-black/5 p-4 rounded-2xl border border-black/5">
+              <p className="text-[10px] font-black uppercase text-gray-400 mb-1">Status Sistem</p>
+              <p className={`text-sm font-bold ${error ? 'text-red-600' : 'text-green-600'}`}>{error || 'Tersambung ke Google Sheets'}</p>
+            </div>
+            <div className="bg-blue-50 p-4 rounded-2xl border border-blue-100">
+              <p className="text-[10px] font-black uppercase text-blue-400 mb-1">Link Terhubung</p>
+              <p className="text-[9px] font-mono break-all text-blue-800 opacity-70 leading-relaxed">{SCRIPT_URL}</p>
+            </div>
           </div>
           <button 
             onClick={() => { fetchDataFromCloud(); setShowDiagnostic(false); }}
-            className="w-full mt-4 bg-blue-600 text-white text-xs font-black py-2 rounded-lg hover:bg-blue-700 transition-colors shadow-lg shadow-blue-500/20"
+            className="w-full mt-5 bg-blue-600 text-white text-xs font-black py-3.5 rounded-2xl hover:bg-blue-700 transition-all shadow-xl shadow-blue-500/30 active:scale-95 flex items-center justify-center gap-2"
           >
-            SINKRON ULANG
+            <RefreshCw size={14} className={isLoading ? 'animate-spin' : ''} />
+            PAKSAL SINKRON ULANG
           </button>
         </div>
       )}
@@ -315,7 +311,7 @@ const App: React.FC = () => {
       <main className="flex h-screen items-center justify-center p-3 md:p-10 pt-12 pb-24">
         <div className="relative h-full w-full max-w-7xl animate-scale-in">
           <MacWindow 
-            title={editingId ? "EDITOR" : (view === 'list' ? "PUSTAKA DIGITAL" : "ENTRY BARU")}
+            title={editingId ? "EDITOR DOKUMEN" : (view === 'list' ? "PUSTAKA DIGITAL SPN3" : "ENTRY DOKUMEN BARU")}
             navigation={
               <>
                 <div className="flex items-center gap-1 bg-black/5 p-1 rounded-xl">
@@ -324,9 +320,9 @@ const App: React.FC = () => {
                 </div>
                 
                 <div className="flex items-center gap-4">
-                  <button onClick={fetchDataFromCloud} className="p-2 hover:bg-black/5 rounded-full transition-all active:rotate-180">
-                    <RefreshCw size={16} className={isLoading ? 'animate-spin' : ''} />
-                  </button>
+                  <div className="flex items-center gap-2 px-3 py-1 bg-black/5 rounded-lg">
+                    <span className="text-[10px] font-black text-gray-400">{items.length} ITEM</span>
+                  </div>
                   <button onClick={() => setCurrentPage('home')} className="flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-black text-red-500 hover:bg-red-50 transition-colors border border-transparent hover:border-red-100">
                     <Home size={16} />
                     <span className="hidden sm:inline">HOME</span>
@@ -336,12 +332,15 @@ const App: React.FC = () => {
             }
           >
             {isLoading && items.length === 0 ? (
-              <div className="flex h-full w-full flex-col items-center justify-center gap-4">
+              <div className="flex h-full w-full flex-col items-center justify-center gap-5">
                 <div className="relative">
                   <div className="h-16 w-16 border-4 border-blue-100 border-t-blue-500 rounded-full animate-spin"></div>
                   <School className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 text-blue-500" size={24} />
                 </div>
-                <span className="text-sm font-black text-gray-400 tracking-[0.2em] uppercase animate-pulse">Menghubungkan ke Cloud...</span>
+                <div className="text-center">
+                  <span className="text-sm font-black text-gray-800 tracking-widest uppercase block">Menghubungkan Database</span>
+                  <span className="text-[10px] font-bold text-gray-400 uppercase tracking-[0.2em] mt-1 block">Tunggu Sebentar...</span>
+                </div>
               </div>
             ) : (
               view === 'list' ? (
@@ -359,14 +358,14 @@ const App: React.FC = () => {
       </main>
 
       {/* macOS Dock */}
-      <div className="absolute bottom-6 left-1/2 -translate-x-1/2 z-[100] flex items-end gap-3 rounded-[2rem] bg-white/20 p-2 shadow-2xl backdrop-blur-3xl border border-white/20 ring-1 ring-black/5">
+      <div className="absolute bottom-6 left-1/2 -translate-x-1/2 z-[100] flex items-end gap-3 rounded-[2.5rem] bg-white/20 p-2.5 shadow-2xl backdrop-blur-3xl border border-white/20 ring-1 ring-black/5 transition-all">
         <DockIcon icon={<Home className="text-blue-500" />} label="Home" onClick={() => setCurrentPage('home')} />
         <div className="h-10 w-px bg-white/20 mx-1"></div>
-        <DockIcon icon={<ImageIcon className="text-green-500" />} label="Arsip Foto" active={view === 'list'} onClick={() => setView('list')} />
-        <DockIcon icon={<PlusCircle className="text-purple-500" />} label="Baru" active={view === 'form'} onClick={() => { setView('form'); setEditingId(null); }} />
+        <DockIcon icon={<ImageIcon className="text-emerald-500" />} label="Arsip Digital" active={view === 'list'} onClick={() => setView('list')} />
+        <DockIcon icon={<PlusCircle className="text-violet-500" />} label="Tambah Baru" active={view === 'form'} onClick={() => { setView('form'); setEditingId(null); }} />
         <div className="h-10 w-px bg-white/20 mx-1"></div>
-        <DockIcon icon={<RefreshCw className="text-orange-500" />} label="Sync Cloud" onClick={fetchDataFromCloud} />
-        <DockIcon icon={<Settings className="text-gray-400" />} label="Pengaturan" onClick={() => setShowDiagnostic(true)} />
+        <DockIcon icon={<RefreshCw className="text-amber-500" />} label="Cek Database" onClick={fetchDataFromCloud} />
+        <DockIcon icon={<Settings className="text-zinc-500" />} label="Status Cloud" onClick={() => setShowDiagnostic(true)} />
       </div>
     </div>
   );
