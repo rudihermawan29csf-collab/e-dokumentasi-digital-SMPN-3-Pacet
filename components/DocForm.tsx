@@ -1,18 +1,21 @@
+
 import React, { useState, useRef, useEffect } from 'react';
-import { Calendar, FileText, Image as ImageIcon, Upload, X, Plus, FileType, FileIcon, Save, ArrowLeft } from 'lucide-react';
+import { Calendar, FileText, Image as ImageIcon, Upload, X, Plus, FileType, FileIcon, Save, ArrowLeft, Sparkles, Loader2 } from 'lucide-react';
 import { DocumentationItem, DocFile } from '../types';
 
 interface DocFormProps {
   onSubmit: (data: Omit<DocumentationItem, 'id' | 'createdAt'>) => void;
   onCancel: () => void;
   initialData?: DocumentationItem | null;
+  onImprove?: (text: string) => Promise<string>;
 }
 
-export const DocForm: React.FC<DocFormProps> = ({ onSubmit, onCancel, initialData }) => {
+export const DocForm: React.FC<DocFormProps> = ({ onSubmit, onCancel, initialData, onImprove }) => {
   const [date, setDate] = useState('');
   const [activityName, setActivityName] = useState('');
   const [description, setDescription] = useState('');
   const [files, setFiles] = useState<DocFile[]>([]);
+  const [isImproving, setIsImproving] = useState(false);
   
   const imageInputRef = useRef<HTMLInputElement>(null);
   const pdfInputRef = useRef<HTMLInputElement>(null);
@@ -23,23 +26,32 @@ export const DocForm: React.FC<DocFormProps> = ({ onSubmit, onCancel, initialDat
       setActivityName(initialData.activityName);
       setDescription(initialData.description);
       setFiles(initialData.files);
+    } else {
+      setDate(new Date().toISOString().split('T')[0]);
     }
   }, [initialData]);
 
-  const imageFiles = files.filter(f => f.type === 'image');
-  const pdfFiles = files.filter(f => f.type === 'pdf');
+  const handleImprove = async () => {
+    if (!description || !onImprove) return;
+    setIsImproving(true);
+    const result = await onImprove(description);
+    setDescription(result);
+    setIsImproving(false);
+  };
 
   const handleImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files) {
-      const newFilesRaw: File[] = Array.from(e.target.files);
-      const remainingSlots = 10 - imageFiles.length;
+      // Cast the resulting array to File[] to resolve TS 'unknown' inference issues
+      const newFilesRaw = Array.from(e.target.files) as File[];
+      const remainingSlots = 10 - files.filter(f => f.type === 'image').length;
       const filesToProcess = newFilesRaw.slice(0, remainingSlots);
 
       const newDocFiles: DocFile[] = filesToProcess.map(file => ({
-        id: Math.random().toString(36).substr(2, 9),
+        id: 'img-' + Math.random().toString(36).substr(2, 9),
         url: URL.createObjectURL(file),
         file,
-        type: 'image'
+        type: 'image',
+        name: file.name
       }));
 
       setFiles(prev => [...prev, ...newDocFiles]);
@@ -49,15 +61,17 @@ export const DocForm: React.FC<DocFormProps> = ({ onSubmit, onCancel, initialDat
 
   const handlePdfChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files) {
-      const newFilesRaw: File[] = Array.from(e.target.files);
-      const remainingSlots = 10 - pdfFiles.length;
+      // Cast the resulting array to File[] to resolve TS 'unknown' inference issues
+      const newFilesRaw = Array.from(e.target.files) as File[];
+      const remainingSlots = 5 - files.filter(f => f.type === 'pdf').length;
       const filesToProcess = newFilesRaw.slice(0, remainingSlots);
 
       const newDocFiles: DocFile[] = filesToProcess.map(file => ({
-        id: Math.random().toString(36).substr(2, 9),
+        id: 'pdf-' + Math.random().toString(36).substr(2, 9),
         url: URL.createObjectURL(file),
         file,
-        type: 'pdf'
+        type: 'pdf',
+        name: file.name
       }));
 
       setFiles(prev => [...prev, ...newDocFiles]);
@@ -65,114 +79,117 @@ export const DocForm: React.FC<DocFormProps> = ({ onSubmit, onCancel, initialDat
     if (e.target) e.target.value = '';
   };
 
-  const removeFile = (id: string) => {
-    setFiles(prev => prev.filter(f => f.id !== id));
-  };
-
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!date || !activityName) return;
-    
     onSubmit({ date, activityName, description, files });
-    
-    if (!initialData) {
-      setDate('');
-      setActivityName('');
-      setDescription('');
-      setFiles([]);
-    }
   };
 
+  const imageFiles = files.filter(f => f.type === 'image');
+  const pdfFiles = files.filter(f => f.type === 'pdf');
+
   return (
-    <div className="mx-auto max-w-2xl px-8 py-10">
-      <div className="mb-10 flex items-center justify-between">
-        <h2 className="text-3xl font-black text-[#1D1D1F] tracking-tight">
-          {initialData ? 'Edit Dokumentasi' : 'Baru di Pustaka'}
-        </h2>
-        <button onClick={onCancel} className="text-[#007AFF] text-sm font-bold hover:underline flex items-center gap-1">
-          <ArrowLeft size={16} /> Kembali
+    <div className="mx-auto max-w-3xl px-6 md:px-12 py-10 animate-fade-in">
+      <div className="mb-10 flex items-center justify-between border-b border-black/5 pb-6">
+        <div>
+          <h2 className="text-3xl font-black text-[#1D1D1F] tracking-tight">
+            {initialData ? 'Edit Dokumentasi' : 'Baru di Pustaka'}
+          </h2>
+          <p className="text-sm font-bold text-gray-400 mt-1">Lengkapi detail kegiatan sekolah Anda.</p>
+        </div>
+        <button onClick={onCancel} className="bg-black/5 p-2 rounded-full hover:bg-black/10 transition-colors">
+          <ArrowLeft size={20} />
         </button>
       </div>
       
-      <form onSubmit={handleSubmit} className="space-y-8">
-        {/* Basic Info Group */}
-        <div className="space-y-6">
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            <div className="space-y-2">
-              <label className="text-xs font-black uppercase tracking-widest text-[#86868B] flex items-center gap-1.5">
-                <Calendar className="w-3.5 h-3.5" /> Tanggal
-              </label>
-              <input
-                type="date"
-                value={date}
-                onChange={(e) => setDate(e.target.value)}
-                className="w-full rounded-xl bg-[#F5F5F7] border border-black/5 p-4 text-sm font-bold text-[#1D1D1F] focus:bg-white focus:outline-none focus:ring-4 focus:ring-[#007AFF]/10 transition-all shadow-sm"
-                required
-              />
-            </div>
-            <div className="space-y-2">
-              <label className="text-xs font-black uppercase tracking-widest text-[#86868B] flex items-center gap-1.5">
-                <FileText className="w-3.5 h-3.5" /> Judul Kegiatan
-              </label>
-              <input
-                type="text"
-                value={activityName}
-                onChange={(e) => setActivityName(e.target.value)}
-                placeholder="Judul dokumentasi..."
-                className="w-full rounded-xl bg-[#F5F5F7] border border-black/5 p-4 text-sm font-bold text-[#1D1D1F] focus:bg-white focus:outline-none focus:ring-4 focus:ring-[#007AFF]/10 transition-all shadow-sm"
-                required
-              />
-            </div>
-          </div>
-
-          <div className="space-y-2">
-            <label className="text-xs font-black uppercase tracking-widest text-[#86868B] flex items-center gap-1.5">
-              <FileText className="w-3.5 h-3.5" /> Deskripsi Singkat
+      <form onSubmit={handleSubmit} className="space-y-10">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+          <div className="space-y-3">
+            <label className="text-[11px] font-black uppercase tracking-[0.2em] text-[#86868B] flex items-center gap-2">
+              <Calendar className="w-4 h-4 text-blue-500" /> Tanggal
             </label>
-            <textarea
-              value={description}
-              onChange={(e) => setDescription(e.target.value)}
-              placeholder="Ceritakan tentang kegiatan ini..."
-              rows={3}
-              className="w-full rounded-xl bg-[#F5F5F7] border border-black/5 p-4 text-sm font-bold text-[#1D1D1F] focus:bg-white focus:outline-none focus:ring-4 focus:ring-[#007AFF]/10 transition-all resize-none shadow-sm"
+            <input
+              type="date"
+              value={date}
+              onChange={(e) => setDate(e.target.value)}
+              className="w-full rounded-2xl bg-[#F5F5F7] border border-black/5 p-4 text-sm font-bold text-[#1D1D1F] focus:bg-white focus:outline-none focus:ring-4 focus:ring-[#007AFF]/10 transition-all shadow-sm"
+              required
+            />
+          </div>
+          <div className="space-y-3">
+            <label className="text-[11px] font-black uppercase tracking-[0.2em] text-[#86868B] flex items-center gap-2">
+              <FileText className="w-4 h-4 text-blue-500" /> Nama Kegiatan
+            </label>
+            <input
+              type="text"
+              value={activityName}
+              onChange={(e) => setActivityName(e.target.value)}
+              placeholder="Contoh: HUT RI Ke-79"
+              className="w-full rounded-2xl bg-[#F5F5F7] border border-black/5 p-4 text-sm font-bold text-[#1D1D1F] focus:bg-white focus:outline-none focus:ring-4 focus:ring-[#007AFF]/10 transition-all shadow-sm"
+              required
             />
           </div>
         </div>
 
-        {/* Media Group */}
-        <div className="space-y-6 pt-4">
+        <div className="space-y-3">
+          <div className="flex items-center justify-between">
+            <label className="text-[11px] font-black uppercase tracking-[0.2em] text-[#86868B] flex items-center gap-2">
+              <FileText className="w-4 h-4 text-blue-500" /> Deskripsi
+            </label>
+            <button 
+              type="button"
+              onClick={handleImprove}
+              disabled={isImproving || !description}
+              className="flex items-center gap-1.5 text-[10px] font-black uppercase tracking-widest text-indigo-600 bg-indigo-50 px-3 py-1.5 rounded-full hover:bg-indigo-100 disabled:opacity-50 transition-all"
+            >
+              {isImproving ? <Loader2 size={12} className="animate-spin" /> : <Sparkles size={12} />}
+              AI Improve
+            </button>
+          </div>
+          <textarea
+            value={description}
+            onChange={(e) => setDescription(e.target.value)}
+            placeholder="Tuliskan detail singkat kegiatan..."
+            rows={4}
+            className="w-full rounded-2xl bg-[#F5F5F7] border border-black/5 p-4 text-sm font-bold text-[#1D1D1F] focus:bg-white focus:outline-none focus:ring-4 focus:ring-[#007AFF]/10 transition-all resize-none shadow-sm"
+          />
+        </div>
+
+        <div className="space-y-6">
           <div className="space-y-4">
             <div className="flex items-center justify-between">
-              <label className="text-xs font-black uppercase tracking-widest text-[#86868B] flex items-center gap-1.5">
-                <ImageIcon className="w-3.5 h-3.5" /> Galeri Foto
+              <label className="text-[11px] font-black uppercase tracking-[0.2em] text-[#86868B] flex items-center gap-2">
+                <ImageIcon className="w-4 h-4 text-blue-500" /> Galeri Foto
               </label>
-              <span className="text-[10px] font-black text-[#86868B]">{imageFiles.length}/10</span>
+              <span className="text-[10px] font-black text-[#86868B] bg-black/5 px-2 py-0.5 rounded-md">{imageFiles.length}/10</span>
             </div>
             
             <div 
               onClick={() => imageFiles.length < 10 && imageInputRef.current?.click()}
-              className={`group flex items-center justify-center rounded-2xl border-2 border-dashed p-8 transition-all 
+              className={`group flex flex-col items-center justify-center rounded-[2rem] border-2 border-dashed p-10 transition-all 
                 ${imageFiles.length >= 10 
-                  ? 'border-black/5 bg-[#F5F5F7] opacity-50 cursor-not-allowed' 
-                  : 'border-[#007AFF]/30 bg-[#007AFF]/5 cursor-pointer hover:border-[#007AFF] hover:bg-[#007AFF]/10'
+                  ? 'border-gray-100 bg-gray-50 opacity-50 cursor-not-allowed' 
+                  : 'border-[#007AFF]/20 bg-[#007AFF]/5 cursor-pointer hover:border-[#007AFF] hover:bg-[#007AFF]/10'
                 }`}
             >
               <input type="file" ref={imageInputRef} onChange={handleImageChange} className="hidden" multiple accept="image/*" />
-              <div className="flex flex-col items-center gap-2">
-                <Plus className={`h-8 w-8 transition-transform group-hover:scale-110 ${imageFiles.length >= 10 ? 'text-gray-400' : 'text-[#007AFF]'}`} />
-                <span className="text-sm font-black text-[#1D1D1F]">Tambah Foto</span>
+              <div className="flex flex-col items-center gap-3">
+                <div className={`p-4 rounded-2xl bg-white shadow-xl transition-transform group-hover:scale-110 ${imageFiles.length >= 10 ? 'text-gray-300' : 'text-[#007AFF]'}`}>
+                  <Plus className="h-8 w-8" strokeWidth={3} />
+                </div>
+                <span className="text-sm font-black text-[#1D1D1F]">Pilih Foto Kegiatan</span>
               </div>
             </div>
 
             {imageFiles.length > 0 && (
-              <div className="grid grid-cols-4 gap-3 sm:grid-cols-5">
+              <div className="grid grid-cols-3 gap-4 sm:grid-cols-5">
                 {imageFiles.map((file) => (
-                  <div key={file.id} className="group relative aspect-square overflow-hidden rounded-xl bg-white shadow-md ring-1 ring-black/5">
-                    <img src={file.url} alt="Preview" className="h-full w-full object-cover" />
+                  <div key={file.id} className="group relative aspect-square overflow-hidden rounded-2xl bg-white shadow-lg ring-1 ring-black/5 animate-scale-in">
+                    <img src={file.url} alt="Preview" className="h-full w-full object-cover transition-transform group-hover:scale-110" />
                     <button
                       type="button"
-                      onClick={() => removeFile(file.id)}
-                      className="absolute right-1 top-1 rounded-full bg-black/50 p-1 text-white opacity-0 transition-opacity hover:bg-red-500 group-hover:opacity-100"
+                      onClick={() => setFiles(prev => prev.filter(f => f.id !== file.id))}
+                      className="absolute right-2 top-2 rounded-full bg-black/50 p-1.5 text-white opacity-0 transition-opacity hover:bg-red-500 group-hover:opacity-100 backdrop-blur-md"
                     >
                       <X className="h-3 w-3" />
                     </button>
@@ -184,34 +201,33 @@ export const DocForm: React.FC<DocFormProps> = ({ onSubmit, onCancel, initialDat
 
           <div className="space-y-4">
             <div className="flex items-center justify-between">
-              <label className="text-xs font-black uppercase tracking-widest text-[#86868B] flex items-center gap-1.5">
-                <FileType className="w-3.5 h-3.5" /> Berkas PDF (Opsional)
+              <label className="text-[11px] font-black uppercase tracking-[0.2em] text-[#86868B] flex items-center gap-2">
+                <FileType className="w-4 h-4 text-blue-500" /> Berkas PDF (Opsional)
               </label>
-              <span className="text-[10px] font-black text-[#86868B]">{pdfFiles.length}/10</span>
+              <span className="text-[10px] font-black text-[#86868B] bg-black/5 px-2 py-0.5 rounded-md">{pdfFiles.length}/5</span>
             </div>
             
             <button
               type="button"
-              onClick={() => pdfFiles.length < 10 && pdfInputRef.current?.click()}
-              disabled={pdfFiles.length >= 10}
-              className="flex w-full items-center justify-center gap-2 rounded-xl bg-black/5 py-4 text-sm font-black text-[#1D1D1F] hover:bg-black/10 transition-colors"
+              onClick={() => pdfFiles.length < 5 && pdfInputRef.current?.click()}
+              disabled={pdfFiles.length >= 5}
+              className="flex w-full items-center justify-center gap-3 rounded-2xl bg-white border border-black/5 py-4 text-sm font-black text-[#1D1D1F] hover:bg-gray-50 transition-all shadow-sm active:scale-[0.98]"
             >
-              <Plus size={18} /> Unggah PDF
+              <FileType size={18} className="text-red-500" /> Unggah Berkas Laporan
               <input type="file" ref={pdfInputRef} onChange={handlePdfChange} className="hidden" multiple accept="application/pdf" />
             </button>
 
-            <div className="space-y-2">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               {pdfFiles.map((file) => (
-                <div key={file.id} className="flex items-center justify-between rounded-xl bg-white p-3 shadow-sm border border-black/5">
+                <div key={file.id} className="flex items-center justify-between rounded-2xl bg-white p-4 shadow-sm border border-black/5 animate-scale-in">
                   <div className="flex items-center gap-3 overflow-hidden">
-                    <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-red-100 text-red-600">
-                      <FileType size={16} strokeWidth={3} />
+                    <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-red-50 text-red-500">
+                      <FileType size={20} strokeWidth={3} />
                     </div>
-                    {/* Use optional chaining to handle both newly uploaded and existing files */}
-                    <span className="truncate text-xs font-bold text-[#1D1D1F]">{file.file?.name || file.name || 'Berkas'}</span>
+                    <span className="truncate text-xs font-black text-[#1D1D1F]">{file.name || 'Laporan.pdf'}</span>
                   </div>
-                  <button type="button" onClick={() => removeFile(file.id)} className="text-gray-400 hover:text-red-500">
-                    <X size={16} />
+                  <button type="button" onClick={() => setFiles(prev => prev.filter(f => f.id !== file.id))} className="text-gray-300 hover:text-red-500 transition-colors">
+                    <X size={18} />
                   </button>
                 </div>
               ))}
@@ -219,14 +235,14 @@ export const DocForm: React.FC<DocFormProps> = ({ onSubmit, onCancel, initialDat
           </div>
         </div>
 
-        {/* Action Button */}
-        <div className="pt-8">
+        <div className="pt-6">
           <button
             type="submit"
-            className="flex w-full items-center justify-center gap-2 rounded-2xl bg-[#007AFF] py-4 text-lg font-black text-white shadow-xl shadow-blue-500/20 transition-all hover:bg-[#0025FF] hover:scale-[1.02] active:scale-95"
+            className="group relative flex w-full items-center justify-center gap-3 overflow-hidden rounded-[2rem] bg-[#007AFF] py-5 text-xl font-black text-white shadow-2xl shadow-blue-500/30 transition-all hover:bg-[#0055FF] hover:scale-[1.02] active:scale-[0.98]"
           >
-            <Save size={20} strokeWidth={3} />
-            {initialData ? 'Simpan Perubahan' : 'Masukkan ke Pustaka'}
+            <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/10 to-transparent -translate-x-full group-hover:translate-x-full transition-transform duration-1000"></div>
+            <Save size={24} strokeWidth={3} />
+            {initialData ? 'SIMPAN PERUBAHAN' : 'MASUKKAN KE PUSTAKA'}
           </button>
         </div>
       </form>

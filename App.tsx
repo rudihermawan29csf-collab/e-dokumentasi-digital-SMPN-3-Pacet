@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect, useCallback } from 'react';
 import { MacWindow } from './components/MacWindow.tsx';
 import { DocForm } from './components/DocForm.tsx';
@@ -17,10 +18,13 @@ import {
   CheckCircle2,
   RefreshCw,
   AlertCircle,
-  LayoutGrid
+  LayoutGrid,
+  Info,
+  X
 } from 'lucide-react';
+import { GoogleGenAI } from "@google/genai";
 
-// URL Google Apps Script yang baru Anda berikan
+// Link yang Anda berikan
 const SCRIPT_URL = "https://script.google.com/macros/s/AKfycbyErX1k4jAQ6kZaWDTi5-Oy3wfYFE-ivk5cqMHlbn5saxSwDmz2rOEuMmEIuI2P13Rh/exec"; 
 
 const fileToBase64 = (file: File): Promise<string> => {
@@ -58,7 +62,7 @@ const DockIcon: React.FC<{
   onClick: () => void 
 }> = ({ icon, label, active, onClick }) => (
   <div className="group relative flex flex-col items-center">
-    <div className="absolute -top-10 scale-0 rounded-md bg-black/80 px-2 py-1 text-[11px] font-semibold text-white transition-all group-hover:scale-100 backdrop-blur-md">
+    <div className="absolute -top-10 scale-0 rounded-md bg-black/80 px-2 py-1 text-[11px] font-semibold text-white transition-all group-hover:scale-100 backdrop-blur-md whitespace-nowrap">
       {label}
     </div>
     <button
@@ -83,6 +87,7 @@ const App: React.FC = () => {
   const [isSyncing, setIsSyncing] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [showDiagnostic, setShowDiagnostic] = useState(false);
 
   const fetchDataFromCloud = useCallback(async () => {
     if (!SCRIPT_URL) return;
@@ -95,11 +100,12 @@ const App: React.FC = () => {
         redirect: 'follow'
       });
       
-      if (!response.ok) throw new Error("Server Error: " + response.status);
+      if (!response.ok) throw new Error(`HTTP ${response.status}`);
       
       const contentType = response.headers.get("content-type");
+      // Google redirects to login page (HTML) if not public
       if (contentType && contentType.includes("text/html")) {
-        throw new Error("Butuh Izin Akses");
+        throw new Error("Izin Akses Ditolak");
       }
 
       const data = await response.json();
@@ -109,16 +115,16 @@ const App: React.FC = () => {
         localStorage.setItem('smpn3_docs', JSON.stringify(data));
         setError(null);
       } else {
-        throw new Error("Data Kosong");
+        throw new Error("Format Data Salah");
       }
     } catch (err: any) {
-      console.error("Fetch error details:", err);
+      console.warn("Connectivity diagnostic:", err.message);
       const saved = localStorage.getItem('smpn3_docs');
       if (saved) {
         setItems(JSON.parse(saved));
-        setError(err.message === "Butuh Izin Akses" ? "Izin Cloud Ditolak" : "Mode Offline");
+        setError(err.message === "Izin Akses Ditolak" ? "Izin Cloud Ditolak" : "Mode Offline");
       } else {
-        setError("Koneksi Gagal");
+        setError("Gagal Terhubung");
       }
     } finally {
       setIsLoading(false);
@@ -145,15 +151,26 @@ const App: React.FC = () => {
         },
         body: JSON.stringify({ action, data })
       });
-      // Beri sedikit delay untuk memastikan user merasa ada proses
-      await new Promise(r => setTimeout(r, 1500));
       return true;
     } catch (error) {
-      console.error("Sync error:", error);
-      setError("Gagal Simpan Cloud");
+      console.error("Sync failure:", error);
       return false;
     } finally {
-      setIsSyncing(false);
+      setTimeout(() => setIsSyncing(false), 1500);
+    }
+  };
+
+  const improveDescription = async (text: string): Promise<string> => {
+    if (!text) return text;
+    try {
+      const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+      const response = await ai.models.generateContent({
+        model: 'gemini-3-flash-preview',
+        contents: `Tolong perbaiki dan buat deskripsi kegiatan sekolah berikut menjadi lebih profesional, menarik, dan informatif untuk laporan dokumentasi SMPN 3 PACET. Gunakan bahasa Indonesia yang baik: "${text}"`,
+      });
+      return response.text || text;
+    } catch (e) {
+      return text;
     }
   };
 
@@ -182,7 +199,7 @@ const App: React.FC = () => {
     try {
       const processedFiles = await processFilesForCloud(formData.files);
       const newItem: DocumentationItem = {
-        id: 'ID-' + Math.random().toString(36).substr(2, 6).toUpperCase(),
+        id: 'DOC-' + Math.random().toString(36).substr(2, 6).toUpperCase(),
         createdAt: Date.now(),
         ...formData,
         files: processedFiles
@@ -194,11 +211,10 @@ const App: React.FC = () => {
       setView('list');
       
       const success = await syncToSpreadsheet(newItem, 'add');
-      if (!success) setError("Tersimpan di Browser");
+      if (!success) setError("Tersimpan Lokal (Cloud Gagal)");
       
     } catch (e) {
-      console.error(e);
-      alert("Gagal memproses. File mungkin terlalu besar.");
+      alert("Gagal memproses data.");
     } finally {
       setIsLoading(false);
     }
@@ -210,7 +226,7 @@ const App: React.FC = () => {
     try {
       const processedFiles = await processFilesForCloud(formData.files);
       const existingItem = items.find(i => i.id === editingId);
-      if (!existingItem) throw new Error("Item not found");
+      if (!existingItem) return;
 
       const updatedItem: DocumentationItem = {
         ...existingItem,
@@ -226,16 +242,16 @@ const App: React.FC = () => {
       
       await syncToSpreadsheet(updatedItem, 'update');
     } catch (e) {
-      alert("Gagal memperbarui data.");
+      alert("Gagal memperbarui.");
     } finally {
       setIsLoading(false);
     }
   };
 
   const handleDelete = async (id: string) => {
-    const password = prompt('Masukkan kata sandi admin (admin123):');
+    const password = prompt('Sandi Admin (admin123):');
     if (password === 'admin123') {
-      if (window.confirm('Hapus selamanya dari database cloud?')) {
+      if (window.confirm('Hapus dari Pustaka & Cloud?')) {
         const itemToDelete = items.find(i => i.id === id);
         const newItems = items.filter(item => item.id !== id);
         setItems(newItems);
@@ -243,27 +259,8 @@ const App: React.FC = () => {
         if (itemToDelete) await syncToSpreadsheet(itemToDelete, 'delete');
       }
     } else if (password !== null) {
-      alert('Kata sandi salah.');
+      alert('Sandi salah.');
     }
-  };
-
-  const handleEditStart = (item: DocumentationItem) => {
-    setEditingId(item.id);
-    setView('form');
-  };
-
-  const handleCancelEdit = () => {
-    setEditingId(null);
-    setView('list');
-  };
-
-  const handleDownload = (item: DocumentationItem) => {
-    item.files.forEach((file, index) => {
-      const link = document.createElement('a');
-      link.href = file.url;
-      link.download = `SMPN3_${item.activityName.replace(/\s+/g, '_')}_${index+1}`;
-      link.click();
-    });
   };
 
   if (currentPage === 'home') {
@@ -273,89 +270,121 @@ const App: React.FC = () => {
   const editingItem = items.find(item => item.id === editingId);
 
   return (
-    <div className="relative h-screen w-screen font-sans overflow-hidden bg-gradient-to-br from-indigo-900 to-purple-800">
+    <div className="relative h-screen w-screen font-sans overflow-hidden bg-gradient-to-br from-[#1e3a8a] via-[#581c87] to-[#1e1b4b]">
       
-      {/* Menu Bar */}
-      <div className="absolute top-0 left-0 right-0 z-[100] flex h-7 items-center justify-between bg-white/10 px-3 md:px-4 text-[11px] md:text-[13px] font-bold text-white backdrop-blur-3xl border-b border-white/10">
-        <div className="flex items-center gap-3 md:gap-5">
-          <div className="hover:bg-white/10 px-2 rounded cursor-default flex items-center gap-1.5 md:gap-2">
+      {/* macOS Menu Bar */}
+      <div className="absolute top-0 left-0 right-0 z-[100] flex h-7 items-center justify-between bg-white/10 px-4 text-[13px] font-bold text-white backdrop-blur-3xl border-b border-white/5">
+        <div className="flex items-center gap-4">
+          <div className="flex items-center gap-2 px-2 hover:bg-white/10 rounded cursor-default transition-colors">
             <School size={14} strokeWidth={3} />
-            <span className="font-extrabold truncate max-w-[80px] md:max-w-none">SMPN 3 PACET</span>
+            <span className="font-extrabold tracking-tight">SMPN 3 PACET</span>
           </div>
           
-          <div className="flex items-center gap-1.5 md:gap-2 px-2 py-0.5 rounded hover:bg-white/10 cursor-pointer" onClick={fetchDataFromCloud}>
+          <div 
+            className={`flex items-center gap-2 px-2 py-0.5 rounded hover:bg-white/10 cursor-pointer transition-all ${error ? 'animate-pulse' : ''}`}
+            onClick={() => setShowDiagnostic(!showDiagnostic)}
+          >
             {isLoading ? (
               <RefreshCw size={12} className="animate-spin text-blue-300" />
-            ) : isSyncing ? (
-              <CloudUpload size={13} className="animate-bounce text-blue-300" />
             ) : error ? (
-              <AlertCircle size={13} className={error.includes("Offline") ? "text-orange-400" : "text-red-400"} />
+              <AlertCircle size={13} className={error === 'Mode Offline' ? 'text-orange-400' : 'text-red-400'} />
             ) : (
               <CheckCircle2 size={13} className="text-green-400" />
             )}
-            <span className={`text-[9px] md:text-[10px] uppercase tracking-tighter ${error?.includes("Offline") ? "text-orange-200" : error ? "text-red-200" : "text-green-100"}`}>
-              {isLoading ? 'Loading...' : isSyncing ? 'Pushing...' : error ? error : 'Cloud Terhubung'}
+            <span className="text-[10px] uppercase tracking-widest opacity-80">
+              {isLoading ? 'Syncing' : error ? error : 'Cloud Active'}
             </span>
           </div>
         </div>
         
-        <div className="flex items-center gap-3 md:gap-4">
-          <Wifi size={14} className="hidden xs:block" />
-          <Battery size={16} className="hidden xs:block" />
-          <span className="text-[11px] md:text-[12px] font-black tabular-nums">
+        <div className="flex items-center gap-4 pr-1">
+          <SearchIcon size={14} className="opacity-70 hover:opacity-100 cursor-pointer" />
+          <Wifi size={14} />
+          <Battery size={16} />
+          <span className="text-[12px] font-black tabular-nums tracking-tighter">
             {time.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })}
           </span>
         </div>
       </div>
 
-      <main className="flex h-screen items-center justify-center p-2 md:p-6 lg:p-10 pb-20 md:pb-24 pt-10 md:pt-12">
-        <div className="relative h-full w-full max-w-7xl">
+      {/* Diagnostic Panel */}
+      {showDiagnostic && error && (
+        <div className="absolute top-10 left-4 z-[110] w-72 p-4 bg-white/90 backdrop-blur-2xl rounded-2xl shadow-2xl border border-black/10 animate-scale-in">
+          <div className="flex items-center justify-between mb-3">
+            <h3 className="text-xs font-black uppercase text-gray-500 tracking-widest">Diagnostic Tool</h3>
+            <button onClick={() => setShowDiagnostic(false)}><X size={14}/></button>
+          </div>
+          <p className="text-sm font-bold text-red-600 mb-2">Masalah: {error}</p>
+          <div className="space-y-2 text-[11px] text-gray-700 leading-relaxed font-medium bg-black/5 p-3 rounded-xl">
+            <p>1. Pastikan Apps Script diatur ke <span className="font-black text-blue-600">"Anyone"</span>.</p>
+            <p>2. Pastikan Anda sudah klik <span className="font-black">Deploy</span> baru setelah update.</p>
+            <p>3. Cek apakah kuota harian Google tercapai.</p>
+          </div>
+          <button 
+            onClick={() => { fetchDataFromCloud(); setShowDiagnostic(false); }}
+            className="w-full mt-4 bg-blue-600 text-white text-xs font-black py-2 rounded-lg hover:bg-blue-700 transition-colors shadow-lg shadow-blue-500/20"
+          >
+            SINKRON ULANG
+          </button>
+        </div>
+      )}
+
+      <main className="flex h-screen items-center justify-center p-3 md:p-10 pt-12 pb-24">
+        <div className="relative h-full w-full max-w-7xl animate-scale-in">
           <MacWindow 
-            title={editingId ? "EDITOR DOCUMENT" : (view === 'list' ? "ARSIP DIGITAL" : "ENTRY BARU")}
+            title={editingId ? "EDITOR" : (view === 'list' ? "PUSTAKA DIGITAL" : "ENTRY BARU")}
             navigation={
               <>
-                <div className="flex items-center gap-1 md:gap-2 bg-black/5 p-1 rounded-xl">
+                <div className="flex items-center gap-1 bg-black/5 p-1 rounded-xl">
                   <NavItem icon={<LayoutGrid size={16} />} label="Gallery" active={view === 'list'} onClick={() => setView('list')} />
                   <NavItem icon={<PlusCircle size={16} />} label="Tambah" active={view === 'form'} onClick={() => { setView('form'); setEditingId(null); }} />
                 </div>
                 
-                <div className="flex items-center gap-2 md:gap-4">
-                  <div className="hidden sm:flex items-center gap-1.5 text-[#8E8E93] text-[10px] md:text-[11px] font-black uppercase tracking-widest px-2">
-                    <span className={`w-2.5 h-2.5 rounded-full ${error ? (error.includes('Offline') ? 'bg-orange-500' : 'bg-red-500') : 'bg-green-500'} ${isLoading ? 'animate-pulse' : ''}`}></span>
-                    {error || 'Cloud Terhubung'}
-                  </div>
-                  <button onClick={() => setCurrentPage('home')} className="flex items-center gap-1.5 md:gap-2 px-2 md:px-3 py-1.5 rounded-lg text-xs md:text-sm font-black text-red-500 hover:bg-red-50 transition-colors">
+                <div className="flex items-center gap-4">
+                  <button onClick={fetchDataFromCloud} className="p-2 hover:bg-black/5 rounded-full transition-all active:rotate-180">
+                    <RefreshCw size={16} className={isLoading ? 'animate-spin' : ''} />
+                  </button>
+                  <button onClick={() => setCurrentPage('home')} className="flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-black text-red-500 hover:bg-red-50 transition-colors border border-transparent hover:border-red-100">
                     <Home size={16} />
-                    <span className="hidden sm:inline">Keluar</span>
+                    <span className="hidden sm:inline">HOME</span>
                   </button>
                 </div>
               </>
             }
           >
             {isLoading && items.length === 0 ? (
-              <div className="flex h-full w-full flex-col items-center justify-center gap-4 bg-white/90">
-                <div className="h-10 w-10 border-4 border-blue-100 border-t-blue-500 rounded-full animate-spin"></div>
-                <span className="text-sm font-black text-gray-400 tracking-widest uppercase animate-pulse">Sinkronisasi Cloud...</span>
+              <div className="flex h-full w-full flex-col items-center justify-center gap-4">
+                <div className="relative">
+                  <div className="h-16 w-16 border-4 border-blue-100 border-t-blue-500 rounded-full animate-spin"></div>
+                  <School className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 text-blue-500" size={24} />
+                </div>
+                <span className="text-sm font-black text-gray-400 tracking-[0.2em] uppercase animate-pulse">Menghubungkan ke Cloud...</span>
               </div>
             ) : (
               view === 'list' ? (
-                <DocList items={items} onEdit={handleEditStart} onDelete={handleDelete} onDownload={handleDownload} />
+                <DocList items={items} onEdit={(item) => { setEditingId(item.id); setView('form'); }} onDelete={handleDelete} onDownload={(item) => item.files.forEach(f => window.open(f.url))} />
               ) : (
-                <DocForm onSubmit={editingId ? handleUpdate : handleAdd} onCancel={handleCancelEdit} initialData={editingItem} />
+                <DocForm 
+                  onSubmit={editingId ? handleUpdate : handleAdd} 
+                  onCancel={() => setView('list')} 
+                  initialData={editingItem}
+                  onImprove={improveDescription}
+                />
               )
             )}
           </MacWindow>
         </div>
       </main>
 
-      {/* Dock */}
-      <div className="absolute bottom-4 md:bottom-6 left-1/2 -translate-x-1/2 z-[100] flex items-end gap-2 md:gap-3 rounded-[24px] md:rounded-[2rem] bg-white/20 p-2 shadow-2xl backdrop-blur-3xl border border-white/20 ring-1 ring-black/5">
+      {/* macOS Dock */}
+      <div className="absolute bottom-6 left-1/2 -translate-x-1/2 z-[100] flex items-end gap-3 rounded-[2rem] bg-white/20 p-2 shadow-2xl backdrop-blur-3xl border border-white/20 ring-1 ring-black/5">
         <DockIcon icon={<Home className="text-blue-500" />} label="Home" onClick={() => setCurrentPage('home')} />
-        <div className="h-8 md:h-10 w-px bg-white/20 mx-0.5 md:mx-1"></div>
-        <DockIcon icon={<ImageIcon className="text-green-500" />} label="Gallery" active={view === 'list'} onClick={() => setView('list')} />
-        <DockIcon icon={<PlusCircle className="text-purple-500" />} label="New Entry" active={view === 'form'} onClick={() => { setView('form'); setEditingId(null); }} />
-        <div className="h-8 md:h-10 w-px bg-white/20 mx-0.5 md:mx-1"></div>
-        <DockIcon icon={<RefreshCw className="text-orange-500" />} label="Refresh" onClick={fetchDataFromCloud} />
+        <div className="h-10 w-px bg-white/20 mx-1"></div>
+        <DockIcon icon={<ImageIcon className="text-green-500" />} label="Arsip Foto" active={view === 'list'} onClick={() => setView('list')} />
+        <DockIcon icon={<PlusCircle className="text-purple-500" />} label="Baru" active={view === 'form'} onClick={() => { setView('form'); setEditingId(null); }} />
+        <div className="h-10 w-px bg-white/20 mx-1"></div>
+        <DockIcon icon={<RefreshCw className="text-orange-500" />} label="Sync Cloud" onClick={fetchDataFromCloud} />
+        <DockIcon icon={<Settings className="text-gray-400" />} label="Pengaturan" onClick={() => setShowDiagnostic(true)} />
       </div>
     </div>
   );
