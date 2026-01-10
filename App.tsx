@@ -23,6 +23,51 @@ import {
 // URL WEB APP DARI USER
 const SCRIPT_URL = "https://script.google.com/macros/s/AKfycbwS_ZiNHJH214i_u8AF7BuZWXZopIG6YThNr96jx5pAJ_z7HBI0W0wuCER7ea1xEzQulw/exec"; 
 
+// --- DATABASE UTILITY (INDEXED DB) ---
+// LocalStorage memiliki limit 5MB, foto base64 akan cepat penuh.
+// IndexedDB digunakan untuk penyimpanan lokal yang lebih besar (ratusan MB).
+const DB_NAME = 'SMPN3PacetDB';
+const STORE_NAME = 'documentation';
+
+const openDB = (): Promise<IDBDatabase> => {
+  return new Promise((resolve, reject) => {
+    const request = indexedDB.open(DB_NAME, 1);
+    request.onupgradeneeded = () => {
+      const db = request.result;
+      if (!db.objectStoreNames.contains(STORE_NAME)) {
+        db.createObjectStore(STORE_NAME, { keyPath: 'id' });
+      }
+    };
+    request.onsuccess = () => resolve(request.result);
+    request.onerror = () => reject(request.error);
+  });
+};
+
+const saveToLocalDB = async (items: DocumentationItem[]) => {
+  const db = await openDB();
+  const tx = db.transaction(STORE_NAME, 'readwrite');
+  const store = tx.objectStore(STORE_NAME);
+  store.clear();
+  items.forEach(item => store.put(item));
+  return new Promise((resolve) => {
+    tx.oncomplete = () => resolve(true);
+  });
+};
+
+const getFromLocalDB = async (): Promise<DocumentationItem[]> => {
+  try {
+    const db = await openDB();
+    const tx = db.transaction(STORE_NAME, 'readonly');
+    const store = tx.objectStore(STORE_NAME);
+    const request = store.getAll();
+    return new Promise((resolve) => {
+      request.onsuccess = () => resolve(request.result || []);
+    });
+  } catch (e) {
+    return [];
+  }
+};
+
 const fileToBase64 = (file: File): Promise<string> => {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
@@ -85,6 +130,17 @@ const App: React.FC = () => {
   const [error, setError] = useState<string | null>(null);
   const [showDiagnostic, setShowDiagnostic] = useState(false);
 
+  // Load initial data dari IndexedDB saat startup
+  useEffect(() => {
+    const loadInitial = async () => {
+      const localData = await getFromLocalDB();
+      if (localData.length > 0) {
+        setItems(localData.sort((a, b) => b.createdAt - a.createdAt));
+      }
+    };
+    loadInitial();
+  }, []);
+
   const fetchDataFromCloud = useCallback(async () => {
     if (!SCRIPT_URL) return;
     setIsLoading(true);
@@ -101,20 +157,15 @@ const App: React.FC = () => {
       const data = await response.json();
       
       if (Array.isArray(data)) {
-        setItems(data);
-        localStorage.setItem('smpn3_docs_local_v2', JSON.stringify(data));
+        const sortedData = data.sort((a, b) => b.createdAt - a.createdAt);
+        setItems(sortedData);
+        await saveToLocalDB(sortedData);
       } else {
-        throw new Error("Data cloud tidak dalam format yang benar");
+        throw new Error("Data cloud tidak valid");
       }
     } catch (err: any) {
-      console.error("Connection Error:", err);
-      const saved = localStorage.getItem('smpn3_docs_local_v2');
-      if (saved) {
-        setItems(JSON.parse(saved));
-        setError("Bekerja Offline (Data Lokal)");
-      } else {
-        setError("Gagal Terhubung ke Cloud. Periksa Deployment.");
-      }
+      console.error("Cloud Error:", err);
+      setError("Gagal sinkron cloud (Bekerja Offline)");
     } finally {
       setIsLoading(false);
     }
@@ -132,21 +183,24 @@ const App: React.FC = () => {
     if (!SCRIPT_URL) return false;
     setIsSyncing(true);
     try {
+      // Mengirim payload ke Google Apps Script
+      // Kita gunakan mode: 'cors' jika script mengijinkan, jika tidak 'no-cors' tapi kita tidak bisa baca balasan.
       await fetch(SCRIPT_URL, {
         method: 'POST',
-        mode: 'no-cors',
         headers: {
-          'Content-Type': 'text/plain',
+          'Content-Type': 'text/plain;charset=utf-8',
         },
-        body: JSON.stringify({ action, data })
+        body: JSON.stringify({ action, data }),
+        redirect: 'follow'
       });
       return true;
     } catch (error) {
       console.error("Sync error:", error);
       return false;
     } finally {
-      setTimeout(() => setIsSyncing(false), 2000);
-      setTimeout(fetchDataFromCloud, 3000);
+      setTimeout(() => setIsSyncing(false), 1500);
+      // Jangan langsung fetch agar tidak tabrakan dengan proses POST
+      setTimeout(fetchDataFromCloud, 4000);
     }
   };
 
@@ -169,7 +223,6 @@ const App: React.FC = () => {
     setIsLoading(true);
     try {
       const processedFiles = await processFilesForCloud(formData.files);
-      // Ganti prefix ID dari SPN3- ke SMPN 3 Pacet-
       const newItem: DocumentationItem = {
         id: 'SMPN 3 Pacet-' + Date.now().toString(36).toUpperCase(),
         createdAt: Date.now(),
@@ -179,12 +232,12 @@ const App: React.FC = () => {
       
       const newItems = [newItem, ...items];
       setItems(newItems);
-      localStorage.setItem('smpn3_docs_local_v2', JSON.stringify(newItems));
+      await saveToLocalDB(newItems);
       setView('list');
       
       await syncToSpreadsheet(newItem, 'add');
     } catch (e) {
-      alert("Error saat menyimpan data.");
+      alert("Error saat menyimpan. Mungkin ukuran foto terlalu besar.");
     } finally {
       setIsLoading(false);
     }
@@ -206,25 +259,30 @@ const App: React.FC = () => {
       
       const newItems = items.map(item => item.id === editingId ? updatedItem : item);
       setItems(newItems);
-      localStorage.setItem('smpn3_docs_local_v2', JSON.stringify(newItems));
+      await saveToLocalDB(newItems);
       setEditingId(null);
       setView('list');
       
       await syncToSpreadsheet(updatedItem, 'update');
     } catch (e) {
-      alert("Gagal memperbarui.");
+      alert("Gagal memperbarui data.");
     } finally {
       setIsLoading(false);
     }
   };
 
   const handleDelete = async (id: string) => {
-    if (window.confirm('Hapus dokumentasi ini selamanya?')) {
-      const itemToDelete = items.find(i => i.id === id);
-      const newItems = items.filter(item => item.id !== id);
-      setItems(newItems);
-      localStorage.setItem('smpn3_docs_local_v2', JSON.stringify(newItems));
-      if (itemToDelete) await syncToSpreadsheet(itemToDelete, 'delete');
+    const password = prompt('Masukkan Sandi Admin untuk menghapus:');
+    if (password === 'admin123') {
+      if (window.confirm('Hapus dokumentasi ini selamanya?')) {
+        const itemToDelete = items.find(i => i.id === id);
+        const newItems = items.filter(item => item.id !== id);
+        setItems(newItems);
+        await saveToLocalDB(newItems);
+        if (itemToDelete) await syncToSpreadsheet(itemToDelete, 'delete');
+      }
+    } else if (password !== null) {
+      alert('Sandi salah. Akses ditolak.');
     }
   };
 
@@ -302,7 +360,6 @@ const App: React.FC = () => {
       <main className="flex h-screen items-center justify-center p-3 md:p-10 pt-12 pb-24">
         <div className="relative h-full w-full max-w-7xl animate-scale-in">
           <MacWindow 
-            // Ganti PUSTAKA DIGITAL SPN3 menjadi PUSTAKA DIGITAL SMPN 3 PACET
             title={editingId ? "EDITOR DOKUMEN" : (view === 'list' ? "PUSTAKA DIGITAL SMPN 3 PACET" : "ENTRY DOKUMEN BARU")}
             navigation={
               <>
