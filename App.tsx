@@ -1,5 +1,5 @@
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { MacWindow } from './components/MacWindow.tsx';
 import { DocForm } from './components/DocForm.tsx';
 import { DocList } from './components/DocList.tsx';
@@ -15,9 +15,12 @@ import {
   Settings,
   Image as ImageIcon,
   CloudUpload,
-  CheckCircle2
+  CheckCircle2,
+  RefreshCw,
+  AlertCircle
 } from 'lucide-react';
 
+// URL Google Apps Script Anda
 const SCRIPT_URL = "https://script.google.com/macros/s/AKfycbyyzZlziNFwGuxiEnYMynPC5_mBAaktA7mQG0SQQyzASEp6GfU4BsJjvqyXkGUZzYwC/exec"; 
 
 const SidebarItem: React.FC<{ 
@@ -69,33 +72,61 @@ const App: React.FC = () => {
   const [currentPage, setCurrentPage] = useState<'home' | 'app'>('home');
   const [time, setTime] = useState(new Date());
   const [isSyncing, setIsSyncing] = useState(false);
+  const [isLoading, setIsLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
-  useEffect(() => {
-    const timer = setInterval(() => setTime(new Date()), 1000);
-    const saved = localStorage.getItem('smpn3_docs');
-    if (saved) {
-      try {
-        setItems(JSON.parse(saved));
-      } catch (e) {
-        console.error("Failed to load local storage", e);
+  // Fungsi untuk mengambil data dari Cloud (Google Sheets)
+  const fetchDataFromCloud = useCallback(async () => {
+    if (!SCRIPT_URL) return;
+    setIsLoading(true);
+    setError(null);
+    try {
+      // Kita asumsikan doGet di Apps Script mengembalikan JSON array
+      const response = await fetch(SCRIPT_URL);
+      if (!response.ok) throw new Error("Gagal terhubung ke server.");
+      const data = await response.json();
+      
+      if (Array.isArray(data)) {
+        setItems(data);
+        localStorage.setItem('smpn3_docs', JSON.stringify(data));
       }
+    } catch (err) {
+      console.error("Fetch error:", err);
+      setError("Gagal sinkronisasi data cloud. Menampilkan data lokal.");
+      // Jika gagal, gunakan data lokal saja
+      const saved = localStorage.getItem('smpn3_docs');
+      if (saved) setItems(JSON.parse(saved));
+    } finally {
+      setIsLoading(false);
     }
-    return () => clearInterval(timer);
   }, []);
 
   useEffect(() => {
-    localStorage.setItem('smpn3_docs', JSON.stringify(items));
+    const timer = setInterval(() => setTime(new Date()), 1000);
+    // Saat aplikasi pertama kali dibuka di halaman App, ambil data
+    if (currentPage === 'app') {
+      fetchDataFromCloud();
+    }
+    return () => clearInterval(timer);
+  }, [currentPage, fetchDataFromCloud]);
+
+  // Tetap simpan ke local untuk akses offline cepat
+  useEffect(() => {
+    if (items.length > 0) {
+      localStorage.setItem('smpn3_docs', JSON.stringify(items));
+    }
   }, [items]);
 
-  const syncToSpreadsheet = async (data: DocumentationItem) => {
+  const syncToSpreadsheet = async (data: DocumentationItem | DocumentationItem[], action: 'add' | 'delete' | 'update' = 'add') => {
     if (!SCRIPT_URL) return;
     setIsSyncing(true);
     try {
+      // Mengirim data ke spreadsheet
       await fetch(SCRIPT_URL, {
         method: 'POST',
         mode: 'no-cors', 
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(data)
+        body: JSON.stringify({ action, data })
       });
     } catch (error) {
       console.error("Sync failed", error);
@@ -110,29 +141,36 @@ const App: React.FC = () => {
       createdAt: Date.now(),
       ...data,
     };
-    setItems(prev => [newItem, ...prev]);
+    const updatedItems = [newItem, ...items];
+    setItems(updatedItems);
     setView('list');
-    await syncToSpreadsheet(newItem);
+    await syncToSpreadsheet(newItem, 'add');
   };
 
-  const handleUpdate = (data: FormData) => {
+  const handleUpdate = async (data: FormData) => {
     if (!editingId) return;
-    setItems(prev => prev.map(item => 
+    const updatedItems = items.map(item => 
       item.id === editingId ? { ...item, ...data } : item
-    ));
+    );
+    setItems(updatedItems);
     setEditingId(null);
     setView('list');
+    
+    const updatedItem = updatedItems.find(i => i.id === editingId);
+    if (updatedItem) await syncToSpreadsheet(updatedItem, 'update');
   };
 
-  const handleDelete = (id: string) => {
+  const handleDelete = async (id: string) => {
     const password = prompt('Masukkan kata sandi admin untuk menghapus data:');
-    
-    if (password === null) return; // User cancelled
+    if (password === null) return;
 
     if (password === 'admin123') {
-      if (window.confirm('Konfirmasi: Hapus dokumen ini secara permanen?')) {
+      if (window.confirm('Konfirmasi: Hapus dokumen ini secara permanen dari semua perangkat?')) {
+        const itemToDelete = items.find(i => i.id === id);
         setItems(prev => prev.filter(item => item.id !== id));
         if (editingId === id) setEditingId(null);
+        
+        if (itemToDelete) await syncToSpreadsheet(itemToDelete, 'delete');
       }
     } else {
       alert('Kata sandi salah! Akses ditolak.');
@@ -168,21 +206,30 @@ const App: React.FC = () => {
   return (
     <div className="relative h-screen w-screen font-sans overflow-hidden bg-gradient-to-br from-indigo-900 to-purple-800">
       
+      {/* Menu Bar macOS Style */}
       <div className="absolute top-0 left-0 right-0 z-[100] flex h-7 items-center justify-between bg-white/10 px-4 text-[13px] font-semibold text-white backdrop-blur-2xl border-b border-white/10">
         <div className="flex items-center gap-5">
           <div className="hover:bg-white/10 px-2 rounded cursor-default">
             <School size={15} strokeWidth={3} />
           </div>
           <span className="font-extrabold cursor-default px-2">SMPN 3 PACET</span>
-          <div className="flex items-center gap-1 opacity-90 font-medium cursor-default hover:bg-white/10 px-2 rounded">
-            {isSyncing ? (
+          
+          <div className="flex items-center gap-2 px-2 py-0.5 rounded hover:bg-white/10 cursor-pointer group" onClick={fetchDataFromCloud}>
+            {isLoading ? (
+              <RefreshCw size={13} className="animate-spin text-blue-300" />
+            ) : isSyncing ? (
               <CloudUpload size={14} className="animate-bounce text-blue-300" />
+            ) : error ? (
+              <AlertCircle size={14} className="text-yellow-400" />
             ) : (
               <CheckCircle2 size={14} className="text-green-400" />
             )}
-            <span className="text-[11px]">{isSyncing ? 'Sinkronisasi...' : 'Tersinkron'}</span>
+            <span className="text-[11px] font-medium">
+              {isLoading ? 'Menghubungkan...' : isSyncing ? 'Mengunggah...' : error ? 'Offline' : 'Tersambung'}
+            </span>
           </div>
         </div>
+        
         <div className="flex items-center gap-5 pr-2">
           <div className="flex items-center gap-2">
             <Wifi size={14} />
@@ -226,15 +273,25 @@ const App: React.FC = () => {
               </div>
             }
           >
-            {view === 'list' ? (
-              <DocList items={items} onEdit={handleEditStart} onDelete={handleDelete} onDownload={handleDownload} />
+            {isLoading && items.length === 0 ? (
+              <div className="flex h-full w-full flex-col items-center justify-center gap-4 bg-white/50">
+                <div className="relative">
+                  <div className="h-12 w-12 rounded-full border-4 border-blue-100 border-t-blue-500 animate-spin"></div>
+                </div>
+                <p className="text-sm font-bold text-[#1D1D1F]">Sinkronisasi Pustaka...</p>
+              </div>
             ) : (
-              <DocForm onSubmit={editingId ? handleUpdate : handleAdd} onCancel={handleCancelEdit} initialData={editingItem} />
+              view === 'list' ? (
+                <DocList items={items} onEdit={handleEditStart} onDelete={handleDelete} onDownload={handleDownload} />
+              ) : (
+                <DocForm onSubmit={editingId ? handleUpdate : handleAdd} onCancel={handleCancelEdit} initialData={editingItem} />
+              )
             )}
           </MacWindow>
         </div>
       </main>
 
+      {/* Dock Area */}
       <div className="absolute bottom-4 md:bottom-6 left-1/2 z-[100] flex -translate-x-1/2 items-end gap-2 md:gap-3 rounded-[24px] bg-white/20 p-2 md:p-2.5 shadow-2xl backdrop-blur-3xl border border-white/20 ring-1 ring-black/5 max-w-[95vw] overflow-x-auto">
         <DockIcon 
           icon={<Home className="text-blue-500 fill-blue-500/20" />} 
@@ -257,8 +314,8 @@ const App: React.FC = () => {
         <div className="h-10 w-[0.5px] bg-white/20 mx-1 mb-1"></div>
         <DockIcon 
           icon={<Settings className="text-[#8E8E93] fill-gray-500/20" />} 
-          label="Pengaturan" 
-          onClick={() => alert('Sistem Pengaturan diaktifkan otomatis oleh Admin.')} 
+          label="Refresh Data" 
+          onClick={fetchDataFromCloud} 
         />
       </div>
     </div>
