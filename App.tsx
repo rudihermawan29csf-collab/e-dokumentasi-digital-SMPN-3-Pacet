@@ -20,7 +20,7 @@ import {
   X
 } from 'lucide-react';
 
-// URL WEB APP BARU DARI USER
+// URL WEB APP DARI USER
 const SCRIPT_URL = "https://script.google.com/macros/s/AKfycbwS_ZiNHJH214i_u8AF7BuZWXZopIG6YThNr96jx5pAJ_z7HBI0W0wuCER7ea1xEzQulw/exec"; 
 
 const fileToBase64 = (file: File): Promise<string> => {
@@ -91,7 +91,6 @@ const App: React.FC = () => {
     setError(null);
     
     try {
-      // Menggunakan fetch dengan redirect follow untuk Google Apps Script
       const response = await fetch(SCRIPT_URL, {
         method: 'GET',
         redirect: 'follow',
@@ -133,8 +132,6 @@ const App: React.FC = () => {
     if (!SCRIPT_URL) return false;
     setIsSyncing(true);
     try {
-      // Mengirim data menggunakan POST. 
-      // Menggunakan mode 'no-cors' seringkali diperlukan untuk menghindari isu CORS preflight dengan Google Apps Script.
       await fetch(SCRIPT_URL, {
         method: 'POST',
         mode: 'no-cors',
@@ -148,9 +145,7 @@ const App: React.FC = () => {
       console.error("Sync error:", error);
       return false;
     } finally {
-      // Tunggu sebentar untuk memberi kesan sinkronisasi
       setTimeout(() => setIsSyncing(false), 2000);
-      // Refresh data setelah beberapa detik agar cloud dan lokal sinkron
       setTimeout(fetchDataFromCloud, 3000);
     }
   };
@@ -174,8 +169,9 @@ const App: React.FC = () => {
     setIsLoading(true);
     try {
       const processedFiles = await processFilesForCloud(formData.files);
+      // Ganti prefix ID dari SPN3- ke SMPN 3 Pacet-
       const newItem: DocumentationItem = {
-        id: 'SPN3-' + Date.now().toString(36).toUpperCase(),
+        id: 'SMPN 3 Pacet-' + Date.now().toString(36).toUpperCase(),
         createdAt: Date.now(),
         ...formData,
         files: processedFiles
@@ -223,17 +219,12 @@ const App: React.FC = () => {
   };
 
   const handleDelete = async (id: string) => {
-    const password = prompt('Sandi Admin (admin123):');
-    if (password === 'admin123') {
-      if (window.confirm('Hapus selamanya dari Cloud & Lokal?')) {
-        const itemToDelete = items.find(i => i.id === id);
-        const newItems = items.filter(item => item.id !== id);
-        setItems(newItems);
-        localStorage.setItem('smpn3_docs_local_v2', JSON.stringify(newItems));
-        if (itemToDelete) await syncToSpreadsheet(itemToDelete, 'delete');
-      }
-    } else if (password !== null) {
-      alert('Sandi salah.');
+    if (window.confirm('Hapus dokumentasi ini selamanya?')) {
+      const itemToDelete = items.find(i => i.id === id);
+      const newItems = items.filter(item => item.id !== id);
+      setItems(newItems);
+      localStorage.setItem('smpn3_docs_local_v2', JSON.stringify(newItems));
+      if (itemToDelete) await syncToSpreadsheet(itemToDelete, 'delete');
     }
   };
 
@@ -303,7 +294,7 @@ const App: React.FC = () => {
             className="w-full mt-5 bg-blue-600 text-white text-xs font-black py-3.5 rounded-2xl hover:bg-blue-700 transition-all shadow-xl shadow-blue-500/30 active:scale-95 flex items-center justify-center gap-2"
           >
             <RefreshCw size={14} className={isLoading ? 'animate-spin' : ''} />
-            PAKSAL SINKRON ULANG
+            PAKSA SINKRON ULANG
           </button>
         </div>
       )}
@@ -311,7 +302,8 @@ const App: React.FC = () => {
       <main className="flex h-screen items-center justify-center p-3 md:p-10 pt-12 pb-24">
         <div className="relative h-full w-full max-w-7xl animate-scale-in">
           <MacWindow 
-            title={editingId ? "EDITOR DOKUMEN" : (view === 'list' ? "PUSTAKA DIGITAL SPN3" : "ENTRY DOKUMEN BARU")}
+            // Ganti PUSTAKA DIGITAL SPN3 menjadi PUSTAKA DIGITAL SMPN 3 PACET
+            title={editingId ? "EDITOR DOKUMEN" : (view === 'list' ? "PUSTAKA DIGITAL SMPN 3 PACET" : "ENTRY DOKUMEN BARU")}
             navigation={
               <>
                 <div className="flex items-center gap-1 bg-black/5 p-1 rounded-xl">
