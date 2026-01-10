@@ -1,7 +1,8 @@
 export interface DocFile {
   id: string;
   url: string;
-  file: File;
+  file?: File;
+  name?: string;
   type: 'image' | 'pdf';
 }
 

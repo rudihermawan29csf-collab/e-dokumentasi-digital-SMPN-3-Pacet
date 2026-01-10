@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect, useCallback } from 'react';
 import { MacWindow } from './components/MacWindow.tsx';
 import { DocForm } from './components/DocForm.tsx';
@@ -21,8 +20,8 @@ import {
   LayoutGrid
 } from 'lucide-react';
 
-// URL Google Apps Script Anda
-const SCRIPT_URL = "https://script.google.com/macros/s/AKfycbyyzZlziNFwGuxiEnYMynPC5_mBAaktA7mQG0SQQyzASEp6GfU4BsJjvqyXkGUZzYwC/exec"; 
+// URL Google Apps Script Terupdate
+const SCRIPT_URL = "https://script.google.com/macros/s/AKfycbx15Ddy6ihMsc0e6zqaTC_GMJOsw5xPD7__HZfTxCQtoAW1YXeRrYtTg0gwmuJsWWYI/exec"; 
 
 const fileToBase64 = (file: File): Promise<string> => {
   return new Promise((resolve, reject) => {
@@ -90,8 +89,8 @@ const App: React.FC = () => {
     setIsLoading(true);
     setError(null);
     try {
-      const response = await fetch(SCRIPT_URL, { method: 'GET' });
-      if (!response.ok) throw new Error("Gagal mengambil data.");
+      const response = await fetch(SCRIPT_URL);
+      if (!response.ok) throw new Error("Server Cloud tidak merespon.");
       const data = await response.json();
       
       if (Array.isArray(data)) {
@@ -99,10 +98,14 @@ const App: React.FC = () => {
         localStorage.setItem('smpn3_docs', JSON.stringify(data));
       }
     } catch (err) {
-      console.error("Fetch error:", err);
-      setError("Gagal sinkronisasi data cloud.");
+      console.warn("Cloud fetch failed, using local storage:", err);
       const saved = localStorage.getItem('smpn3_docs');
-      if (saved) setItems(JSON.parse(saved));
+      if (saved) {
+        setItems(JSON.parse(saved));
+        setError("Cloud Offline (Cache)");
+      } else {
+        setError("Koneksi Gagal");
+      }
     } finally {
       setIsLoading(false);
     }
@@ -120,24 +123,30 @@ const App: React.FC = () => {
     if (!SCRIPT_URL) return false;
     setIsSyncing(true);
     try {
+      // Mengirimkan data sebagai string JSON dalam body POST
+      // Mode no-cors digunakan untuk menghindari masalah preflight CORS pada Google Apps Script
       await fetch(SCRIPT_URL, {
         method: 'POST',
         mode: 'no-cors',
-        headers: { 'Content-Type': 'text/plain' }, 
+        headers: {
+          'Content-Type': 'text/plain;charset=utf-8',
+        },
         body: JSON.stringify({ action, data })
       });
       return true;
     } catch (error) {
       console.error("Sync error:", error);
-      setError("Gagal mengirim ke cloud.");
+      setError("Gagal Sinkron");
       return false;
     } finally {
-      setTimeout(() => setIsSyncing(false), 1500);
+      // Berikan waktu sedikit agar animasi syncing terlihat
+      setTimeout(() => setIsSyncing(false), 2000);
     }
   };
 
-  const processFilesForCloud = async (files: DocFile[]) => {
+  const processFilesForCloud = async (files: DocFile[]): Promise<DocFile[]> => {
     return await Promise.all(files.map(async f => {
+      // Jika f.file ada (berarti baru diupload), konversi ke base64
       if (f.file instanceof File) {
         const base64 = await fileToBase64(f.file);
         return { 
@@ -147,7 +156,13 @@ const App: React.FC = () => {
           name: f.file.name 
         };
       }
-      return f;
+      // Jika f.url sudah base64 (dari cloud) atau URL statis, biarkan saja
+      return {
+        id: f.id,
+        url: f.url,
+        type: f.type,
+        name: f.name || 'file'
+      };
     }));
   };
 
@@ -156,17 +171,29 @@ const App: React.FC = () => {
     try {
       const processedFiles = await processFilesForCloud(formData.files);
       const newItem: DocumentationItem = {
-        id: Math.random().toString(36).substr(2, 9),
+        id: 'ID-' + Math.random().toString(36).substr(2, 6).toUpperCase(),
         createdAt: Date.now(),
         ...formData,
-        files: processedFiles as any
+        files: processedFiles
       };
-      setItems(prev => [newItem, ...prev]);
+      
+      // Simpan di state lokal untuk responsivitas cepat
+      const newItems = [newItem, ...items];
+      setItems(newItems);
+      localStorage.setItem('smpn3_docs', JSON.stringify(newItems));
       setView('list');
-      await syncToSpreadsheet(newItem, 'add');
+      
+      // Kirim data ke cloud spreadsheet
+      const success = await syncToSpreadsheet(newItem, 'add');
+      if (!success) {
+        setError("Gagal kirim ke Cloud");
+      } else {
+        setError(null);
+      }
+      
     } catch (e) {
       console.error(e);
-      alert("Gagal memproses gambar.");
+      alert("Gagal memproses file. Pastikan ukuran file tidak terlalu besar.");
     } finally {
       setIsLoading(false);
     }
@@ -177,14 +204,21 @@ const App: React.FC = () => {
     setIsLoading(true);
     try {
       const processedFiles = await processFilesForCloud(formData.files);
-      const updatedItem = {
-        ...items.find(i => i.id === editingId),
+      const existingItem = items.find(i => i.id === editingId);
+      if (!existingItem) throw new Error("Item not found");
+
+      const updatedItem: DocumentationItem = {
+        ...existingItem,
         ...formData,
-        files: processedFiles as any
+        files: processedFiles
       };
-      setItems(prev => prev.map(item => item.id === editingId ? updatedItem as any : item));
+      
+      const newItems = items.map(item => item.id === editingId ? updatedItem : item);
+      setItems(newItems);
+      localStorage.setItem('smpn3_docs', JSON.stringify(newItems));
       setEditingId(null);
       setView('list');
+      
       await syncToSpreadsheet(updatedItem, 'update');
     } catch (e) {
       alert("Gagal memperbarui data.");
@@ -194,11 +228,13 @@ const App: React.FC = () => {
   };
 
   const handleDelete = async (id: string) => {
-    const password = prompt('Masukkan kata sandi admin:');
+    const password = prompt('Masukkan kata sandi admin untuk menghapus:');
     if (password === 'admin123') {
-      if (window.confirm('Hapus selamanya dari semua perangkat?')) {
+      if (window.confirm('Hapus selamanya dari database cloud?')) {
         const itemToDelete = items.find(i => i.id === id);
-        setItems(prev => prev.filter(item => item.id !== id));
+        const newItems = items.filter(item => item.id !== id);
+        setItems(newItems);
+        localStorage.setItem('smpn3_docs', JSON.stringify(newItems));
         if (itemToDelete) await syncToSpreadsheet(itemToDelete, 'delete');
       }
     } else if (password !== null) {
@@ -234,7 +270,7 @@ const App: React.FC = () => {
   return (
     <div className="relative h-screen w-screen font-sans overflow-hidden bg-gradient-to-br from-indigo-900 to-purple-800">
       
-      {/* Menu Bar - Compact on Mobile */}
+      {/* Menu Bar */}
       <div className="absolute top-0 left-0 right-0 z-[100] flex h-7 items-center justify-between bg-white/10 px-3 md:px-4 text-[11px] md:text-[13px] font-bold text-white backdrop-blur-3xl border-b border-white/10">
         <div className="flex items-center gap-3 md:gap-5">
           <div className="hover:bg-white/10 px-2 rounded cursor-default flex items-center gap-1.5 md:gap-2">
@@ -253,7 +289,7 @@ const App: React.FC = () => {
               <CheckCircle2 size={13} className="text-green-400" />
             )}
             <span className="text-[9px] md:text-[10px] uppercase tracking-tighter">
-              {isLoading ? 'Sync' : isSyncing ? 'Push' : error ? 'Offline' : 'Online'}
+              {isLoading ? 'Sync' : isSyncing ? 'Push' : error ? 'Error' : 'Online'}
             </span>
           </div>
         </div>
@@ -270,7 +306,7 @@ const App: React.FC = () => {
       <main className="flex h-screen items-center justify-center p-2 md:p-6 lg:p-10 pb-20 md:pb-24 pt-10 md:pt-12">
         <div className="relative h-full w-full max-w-7xl">
           <MacWindow 
-            title={editingId ? "EDITOR" : (view === 'list' ? "ARSIP DIGITAL" : "ENTRY BARU")}
+            title={editingId ? "EDITOR DOCUMENT" : (view === 'list' ? "ARSIP DIGITAL" : "ENTRY BARU")}
             navigation={
               <>
                 <div className="flex items-center gap-1 md:gap-2 bg-black/5 p-1 rounded-xl">
@@ -280,12 +316,12 @@ const App: React.FC = () => {
                 
                 <div className="flex items-center gap-2 md:gap-4">
                   <div className="hidden sm:flex items-center gap-1.5 text-[#8E8E93] text-[10px] md:text-[11px] font-black uppercase tracking-widest px-2">
-                    <span className="w-2 h-2 rounded-full bg-blue-500 animate-pulse"></span>
-                    Live
+                    <span className={`w-2 h-2 rounded-full ${error ? 'bg-red-500' : 'bg-blue-500'} animate-pulse`}></span>
+                    {error ? 'Offline' : 'Live Cloud'}
                   </div>
                   <button onClick={() => setCurrentPage('home')} className="flex items-center gap-1.5 md:gap-2 px-2 md:px-3 py-1.5 rounded-lg text-xs md:text-sm font-black text-red-500 hover:bg-red-50 transition-colors">
                     <Home size={16} />
-                    <span className="hidden sm:inline">Exit</span>
+                    <span className="hidden sm:inline">Keluar</span>
                   </button>
                 </div>
               </>
@@ -294,7 +330,7 @@ const App: React.FC = () => {
             {isLoading && items.length === 0 ? (
               <div className="flex h-full w-full flex-col items-center justify-center gap-4 bg-white/90">
                 <div className="h-10 w-10 border-4 border-blue-100 border-t-blue-500 rounded-full animate-spin"></div>
-                <span className="text-sm font-black text-gray-400 tracking-widest uppercase animate-pulse">Connecting...</span>
+                <span className="text-sm font-black text-gray-400 tracking-widest uppercase animate-pulse">Menghubungkan ke Cloud...</span>
               </div>
             ) : (
               view === 'list' ? (
@@ -307,7 +343,7 @@ const App: React.FC = () => {
         </div>
       </main>
 
-      {/* Dock - Compact for Mobile */}
+      {/* Dock */}
       <div className="absolute bottom-4 md:bottom-6 left-1/2 -translate-x-1/2 z-[100] flex items-end gap-2 md:gap-3 rounded-[24px] md:rounded-[2rem] bg-white/20 p-2 shadow-2xl backdrop-blur-3xl border border-white/20 ring-1 ring-black/5">
         <DockIcon icon={<Home className="text-blue-500" />} label="Home" onClick={() => setCurrentPage('home')} />
         <div className="h-8 md:h-10 w-px bg-white/20 mx-0.5 md:mx-1"></div>

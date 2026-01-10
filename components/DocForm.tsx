@@ -207,7 +207,8 @@ export const DocForm: React.FC<DocFormProps> = ({ onSubmit, onCancel, initialDat
                     <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-red-100 text-red-600">
                       <FileType size={16} strokeWidth={3} />
                     </div>
-                    <span className="truncate text-xs font-bold text-[#1D1D1F]">{file.file.name}</span>
+                    {/* Use optional chaining to handle both newly uploaded and existing files */}
+                    <span className="truncate text-xs font-bold text-[#1D1D1F]">{file.file?.name || file.name || 'Berkas'}</span>
                   </div>
                   <button type="button" onClick={() => removeFile(file.id)} className="text-gray-400 hover:text-red-500">
                     <X size={16} />
