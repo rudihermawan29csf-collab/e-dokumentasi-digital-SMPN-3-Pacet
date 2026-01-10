@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Calendar, FileText, Image as ImageIcon, Upload, X, Plus, FileType, FileIcon, Save, ArrowLeft } from 'lucide-react';
+import { Calendar, FileText, Image as ImageIcon, Upload, X, Plus, FileType, FileIcon, Save, ArrowLeft, ChevronLeft, ChevronRight } from 'lucide-react';
 import { DocumentationItem, DocFile } from '../types';
 
 interface DocFormProps {
@@ -31,7 +31,8 @@ export const DocForm: React.FC<DocFormProps> = ({ onSubmit, onCancel, initialDat
   const handleImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files) {
       const newFilesRaw = Array.from(e.target.files) as File[];
-      const remainingSlots = 10 - files.filter(f => f.type === 'image').length;
+      const currentImageCount = files.filter(f => f.type === 'image').length;
+      const remainingSlots = 10 - currentImageCount;
       const filesToProcess = newFilesRaw.slice(0, remainingSlots);
 
       const newDocFiles: DocFile[] = filesToProcess.map(file => ({
@@ -64,6 +65,25 @@ export const DocForm: React.FC<DocFormProps> = ({ onSubmit, onCancel, initialDat
       setFiles(prev => [...prev, ...newDocFiles]);
     }
     if (e.target) e.target.value = '';
+  };
+
+  const moveImage = (indexInImages: number, direction: 'left' | 'right') => {
+    const imageFiles = files.filter(f => f.type === 'image');
+    const pdfFiles = files.filter(f => f.type === 'pdf');
+    
+    if (direction === 'left' && indexInImages > 0) {
+      const newImageFiles = [...imageFiles];
+      [newImageFiles[indexInImages - 1], newImageFiles[indexInImages]] = [newImageFiles[indexInImages], newImageFiles[indexInImages - 1]];
+      setFiles([...newImageFiles, ...pdfFiles]);
+    } else if (direction === 'right' && indexInImages < imageFiles.length - 1) {
+      const newImageFiles = [...imageFiles];
+      [newImageFiles[indexInImages + 1], newImageFiles[indexInImages]] = [newImageFiles[indexInImages], newImageFiles[indexInImages + 1]];
+      setFiles([...newImageFiles, ...pdfFiles]);
+    }
+  };
+
+  const removeFile = (id: string) => {
+    setFiles(prev => prev.filter(f => f.id !== id));
   };
 
   const handleSubmit = (e: React.FormEvent) => {
@@ -137,7 +157,10 @@ export const DocForm: React.FC<DocFormProps> = ({ onSubmit, onCancel, initialDat
               <label className="text-[11px] font-black uppercase tracking-[0.2em] text-[#86868B] flex items-center gap-2">
                 <ImageIcon className="w-4 h-4 text-blue-500" /> Galeri Foto
               </label>
-              <span className="text-[10px] font-black text-[#86868B] bg-black/5 px-2 py-0.5 rounded-md">{imageFiles.length}/10</span>
+              <div className="flex items-center gap-2">
+                <span className="text-[9px] font-bold text-blue-400 animate-pulse">BISA DI-SWAP URUTANNYA</span>
+                <span className="text-[10px] font-black text-[#86868B] bg-black/5 px-2 py-0.5 rounded-md">{imageFiles.length}/10</span>
+              </div>
             </div>
             
             <div 
@@ -158,17 +181,49 @@ export const DocForm: React.FC<DocFormProps> = ({ onSubmit, onCancel, initialDat
             </div>
 
             {imageFiles.length > 0 && (
-              <div className="grid grid-cols-3 gap-4 sm:grid-cols-5">
-                {imageFiles.map((file) => (
+              <div className="grid grid-cols-2 gap-4 sm:grid-cols-4 md:grid-cols-5">
+                {imageFiles.map((file, idx) => (
                   <div key={file.id} className="group relative aspect-square overflow-hidden rounded-2xl bg-white shadow-lg ring-1 ring-black/5 animate-scale-in">
                     <img src={file.url} alt="Preview" className="h-full w-full object-cover transition-transform group-hover:scale-110" />
-                    <button
-                      type="button"
-                      onClick={() => setFiles(prev => prev.filter(f => f.id !== file.id))}
-                      className="absolute right-2 top-2 rounded-full bg-black/50 p-1.5 text-white opacity-0 transition-opacity hover:bg-red-500 group-hover:opacity-100 backdrop-blur-md"
-                    >
-                      <X className="h-3 w-3" />
-                    </button>
+                    
+                    {/* Controls Overlay */}
+                    <div className="absolute inset-0 bg-black/30 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-2 backdrop-blur-[1px]">
+                      {idx > 0 && (
+                        <button
+                          type="button"
+                          onClick={() => moveImage(idx, 'left')}
+                          className="rounded-full bg-white/90 p-1.5 text-blue-600 hover:bg-blue-600 hover:text-white transition-all shadow-lg active:scale-90"
+                          title="Geser Kiri"
+                        >
+                          <ChevronLeft className="h-4 w-4" strokeWidth={3} />
+                        </button>
+                      )}
+                      
+                      <button
+                        type="button"
+                        onClick={() => removeFile(file.id)}
+                        className="rounded-full bg-red-500/90 p-1.5 text-white hover:bg-red-600 transition-all shadow-lg active:scale-90 mx-1"
+                        title="Hapus"
+                      >
+                        <X className="h-4 w-4" strokeWidth={3} />
+                      </button>
+
+                      {idx < imageFiles.length - 1 && (
+                        <button
+                          type="button"
+                          onClick={() => moveImage(idx, 'right')}
+                          className="rounded-full bg-white/90 p-1.5 text-blue-600 hover:bg-blue-600 hover:text-white transition-all shadow-lg active:scale-90"
+                          title="Geser Kanan"
+                        >
+                          <ChevronRight className="h-4 w-4" strokeWidth={3} />
+                        </button>
+                      )}
+                    </div>
+                    
+                    {/* Index Indicator */}
+                    <div className="absolute bottom-2 left-2 px-1.5 py-0.5 bg-black/50 backdrop-blur-md rounded-md text-[9px] font-black text-white pointer-events-none">
+                      {idx + 1}
+                    </div>
                   </div>
                 ))}
               </div>
@@ -202,7 +257,7 @@ export const DocForm: React.FC<DocFormProps> = ({ onSubmit, onCancel, initialDat
                     </div>
                     <span className="truncate text-xs font-black text-[#1D1D1F]">{file.name || 'Laporan.pdf'}</span>
                   </div>
-                  <button type="button" onClick={() => setFiles(prev => prev.filter(f => f.id !== file.id))} className="text-gray-300 hover:text-red-500 transition-colors">
+                  <button type="button" onClick={() => removeFile(file.id)} className="text-gray-300 hover:text-red-500 transition-colors">
                     <X size={18} />
                   </button>
                 </div>
