@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect, useCallback } from 'react';
 import { MacWindow } from './components/MacWindow.tsx';
 import { DocForm } from './components/DocForm.tsx';
@@ -21,8 +20,8 @@ import {
   LayoutGrid
 } from 'lucide-react';
 
-// URL Google Apps Script Terupdate
-const SCRIPT_URL = "https://script.google.com/macros/s/AKfycbx15Ddy6ihMsc0e6zqaTC_GMJOsw5xPD7__HZfTxCQtoAW1YXeRrYtTg0gwmuJsWWYI/exec"; 
+// URL Google Apps Script yang baru Anda berikan
+const SCRIPT_URL = "https://script.google.com/macros/s/AKfycbyErX1k4jAQ6kZaWDTi5-Oy3wfYFE-ivk5cqMHlbn5saxSwDmz2rOEuMmEIuI2P13Rh/exec"; 
 
 const fileToBase64 = (file: File): Promise<string> => {
   return new Promise((resolve, reject) => {
@@ -90,29 +89,36 @@ const App: React.FC = () => {
     setIsLoading(true);
     
     try {
-      // Menggunakan cache-busting agar browser tidak mengambil hasil error yang tersimpan
       const cacheBuster = `?t=${Date.now()}`;
-      const response = await fetch(SCRIPT_URL + cacheBuster);
+      const response = await fetch(SCRIPT_URL + cacheBuster, {
+        method: 'GET',
+        redirect: 'follow'
+      });
       
-      if (!response.ok) throw new Error("HTTP " + response.status);
+      if (!response.ok) throw new Error("Server Error: " + response.status);
       
+      const contentType = response.headers.get("content-type");
+      if (contentType && contentType.includes("text/html")) {
+        throw new Error("Butuh Izin Akses");
+      }
+
       const data = await response.json();
       
       if (Array.isArray(data)) {
         setItems(data);
         localStorage.setItem('smpn3_docs', JSON.stringify(data));
-        setError(null); // Clear error on success
+        setError(null);
       } else {
-        throw new Error("Invalid Data Format");
+        throw new Error("Data Kosong");
       }
-    } catch (err) {
-      console.warn("Cloud connection issue:", err);
+    } catch (err: any) {
+      console.error("Fetch error details:", err);
       const saved = localStorage.getItem('smpn3_docs');
       if (saved) {
         setItems(JSON.parse(saved));
-        setError("Mode Offline");
+        setError(err.message === "Butuh Izin Akses" ? "Izin Cloud Ditolak" : "Mode Offline");
       } else {
-        setError("Gagal Terhubung");
+        setError("Koneksi Gagal");
       }
     } finally {
       setIsLoading(false);
@@ -139,13 +145,15 @@ const App: React.FC = () => {
         },
         body: JSON.stringify({ action, data })
       });
+      // Beri sedikit delay untuk memastikan user merasa ada proses
+      await new Promise(r => setTimeout(r, 1500));
       return true;
     } catch (error) {
       console.error("Sync error:", error);
-      setError("Gagal Push");
+      setError("Gagal Simpan Cloud");
       return false;
     } finally {
-      setTimeout(() => setIsSyncing(false), 2000);
+      setIsSyncing(false);
     }
   };
 
@@ -186,11 +194,11 @@ const App: React.FC = () => {
       setView('list');
       
       const success = await syncToSpreadsheet(newItem, 'add');
-      if (!success) setError("Tersimpan Lokal");
+      if (!success) setError("Tersimpan di Browser");
       
     } catch (e) {
       console.error(e);
-      alert("Gagal memproses file.");
+      alert("Gagal memproses. File mungkin terlalu besar.");
     } finally {
       setIsLoading(false);
     }
@@ -281,12 +289,12 @@ const App: React.FC = () => {
             ) : isSyncing ? (
               <CloudUpload size={13} className="animate-bounce text-blue-300" />
             ) : error ? (
-              <AlertCircle size={13} className={error === 'Mode Offline' ? 'text-orange-400' : 'text-red-400'} />
+              <AlertCircle size={13} className={error.includes("Offline") ? "text-orange-400" : "text-red-400"} />
             ) : (
               <CheckCircle2 size={13} className="text-green-400" />
             )}
-            <span className={`text-[9px] md:text-[10px] uppercase tracking-tighter ${error === 'Mode Offline' ? 'text-orange-200' : ''}`}>
-              {isLoading ? 'Syncing...' : isSyncing ? 'Pushing...' : error ? error : 'Terhubung'}
+            <span className={`text-[9px] md:text-[10px] uppercase tracking-tighter ${error?.includes("Offline") ? "text-orange-200" : error ? "text-red-200" : "text-green-100"}`}>
+              {isLoading ? 'Loading...' : isSyncing ? 'Pushing...' : error ? error : 'Cloud Terhubung'}
             </span>
           </div>
         </div>
@@ -313,7 +321,7 @@ const App: React.FC = () => {
                 
                 <div className="flex items-center gap-2 md:gap-4">
                   <div className="hidden sm:flex items-center gap-1.5 text-[#8E8E93] text-[10px] md:text-[11px] font-black uppercase tracking-widest px-2">
-                    <span className={`w-2.5 h-2.5 rounded-full ${error ? (error === 'Mode Offline' ? 'bg-orange-500' : 'bg-red-500') : 'bg-green-500'} ${isLoading ? 'animate-pulse' : ''}`}></span>
+                    <span className={`w-2.5 h-2.5 rounded-full ${error ? (error.includes('Offline') ? 'bg-orange-500' : 'bg-red-500') : 'bg-green-500'} ${isLoading ? 'animate-pulse' : ''}`}></span>
                     {error || 'Cloud Terhubung'}
                   </div>
                   <button onClick={() => setCurrentPage('home')} className="flex items-center gap-1.5 md:gap-2 px-2 md:px-3 py-1.5 rounded-lg text-xs md:text-sm font-black text-red-500 hover:bg-red-50 transition-colors">
@@ -327,7 +335,7 @@ const App: React.FC = () => {
             {isLoading && items.length === 0 ? (
               <div className="flex h-full w-full flex-col items-center justify-center gap-4 bg-white/90">
                 <div className="h-10 w-10 border-4 border-blue-100 border-t-blue-500 rounded-full animate-spin"></div>
-                <span className="text-sm font-black text-gray-400 tracking-widest uppercase animate-pulse">Sinkronisasi...</span>
+                <span className="text-sm font-black text-gray-400 tracking-widest uppercase animate-pulse">Sinkronisasi Cloud...</span>
               </div>
             ) : (
               view === 'list' ? (
