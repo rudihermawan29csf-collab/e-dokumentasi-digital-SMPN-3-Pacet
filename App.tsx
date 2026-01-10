@@ -21,7 +21,7 @@ import {
   LayoutGrid
 } from 'lucide-react';
 
-// URL Google Apps Script Anda
+// URL Google Apps Script Terupdate
 const SCRIPT_URL = "https://script.google.com/macros/s/AKfycbx15Ddy6ihMsc0e6zqaTC_GMJOsw5xPD7__HZfTxCQtoAW1YXeRrYtTg0gwmuJsWWYI/exec"; 
 
 const fileToBase64 = (file: File): Promise<string> => {
@@ -88,29 +88,31 @@ const App: React.FC = () => {
   const fetchDataFromCloud = useCallback(async () => {
     if (!SCRIPT_URL) return;
     setIsLoading(true);
-    setError(null);
+    
     try {
-      // Fetch data tanpa header tambahan untuk menghindari preflight CORS
-      const response = await fetch(SCRIPT_URL);
-      if (!response.ok) throw new Error("Server tidak merespon (404/500)");
+      // Menggunakan cache-busting agar browser tidak mengambil hasil error yang tersimpan
+      const cacheBuster = `?t=${Date.now()}`;
+      const response = await fetch(SCRIPT_URL + cacheBuster);
+      
+      if (!response.ok) throw new Error("HTTP " + response.status);
       
       const data = await response.json();
       
       if (Array.isArray(data)) {
         setItems(data);
         localStorage.setItem('smpn3_docs', JSON.stringify(data));
-        setError(null);
+        setError(null); // Clear error on success
       } else {
-        throw new Error("Format data tidak valid");
+        throw new Error("Invalid Data Format");
       }
     } catch (err) {
-      console.warn("Cloud fetch error:", err);
+      console.warn("Cloud connection issue:", err);
       const saved = localStorage.getItem('smpn3_docs');
       if (saved) {
         setItems(JSON.parse(saved));
-        setError("Offline (Cache)");
+        setError("Mode Offline");
       } else {
-        setError("Koneksi Gagal");
+        setError("Gagal Terhubung");
       }
     } finally {
       setIsLoading(false);
@@ -129,8 +131,6 @@ const App: React.FC = () => {
     if (!SCRIPT_URL) return false;
     setIsSyncing(true);
     try {
-      // Mengirim dengan mode no-cors adalah cara paling aman untuk Google Apps Script
-      // agar tidak terblokir kebijakan CORS browser saat melakukan POST.
       await fetch(SCRIPT_URL, {
         method: 'POST',
         mode: 'no-cors',
@@ -139,9 +139,6 @@ const App: React.FC = () => {
         },
         body: JSON.stringify({ action, data })
       });
-      
-      // Karena no-cors, kita tidak bisa membaca response. 
-      // Kita asumsikan terkirim jika tidak ada error network.
       return true;
     } catch (error) {
       console.error("Sync error:", error);
@@ -189,11 +186,11 @@ const App: React.FC = () => {
       setView('list');
       
       const success = await syncToSpreadsheet(newItem, 'add');
-      if (!success) setError("Gagal kirim ke Cloud");
+      if (!success) setError("Tersimpan Lokal");
       
     } catch (e) {
       console.error(e);
-      alert("Gagal memproses file. Ukuran file mungkin terlalu besar.");
+      alert("Gagal memproses file.");
     } finally {
       setIsLoading(false);
     }
@@ -284,12 +281,12 @@ const App: React.FC = () => {
             ) : isSyncing ? (
               <CloudUpload size={13} className="animate-bounce text-blue-300" />
             ) : error ? (
-              <AlertCircle size={13} className="text-yellow-400" />
+              <AlertCircle size={13} className={error === 'Mode Offline' ? 'text-orange-400' : 'text-red-400'} />
             ) : (
               <CheckCircle2 size={13} className="text-green-400" />
             )}
-            <span className="text-[9px] md:text-[10px] uppercase tracking-tighter">
-              {isLoading ? 'Sync' : isSyncing ? 'Push' : error ? error : 'Online'}
+            <span className={`text-[9px] md:text-[10px] uppercase tracking-tighter ${error === 'Mode Offline' ? 'text-orange-200' : ''}`}>
+              {isLoading ? 'Syncing...' : isSyncing ? 'Pushing...' : error ? error : 'Terhubung'}
             </span>
           </div>
         </div>
@@ -316,8 +313,8 @@ const App: React.FC = () => {
                 
                 <div className="flex items-center gap-2 md:gap-4">
                   <div className="hidden sm:flex items-center gap-1.5 text-[#8E8E93] text-[10px] md:text-[11px] font-black uppercase tracking-widest px-2">
-                    <span className={`w-2 h-2 rounded-full ${error ? 'bg-red-500' : 'bg-blue-500'} animate-pulse`}></span>
-                    {error ? 'Offline' : 'Connected'}
+                    <span className={`w-2.5 h-2.5 rounded-full ${error ? (error === 'Mode Offline' ? 'bg-orange-500' : 'bg-red-500') : 'bg-green-500'} ${isLoading ? 'animate-pulse' : ''}`}></span>
+                    {error || 'Cloud Terhubung'}
                   </div>
                   <button onClick={() => setCurrentPage('home')} className="flex items-center gap-1.5 md:gap-2 px-2 md:px-3 py-1.5 rounded-lg text-xs md:text-sm font-black text-red-500 hover:bg-red-50 transition-colors">
                     <Home size={16} />
@@ -330,7 +327,7 @@ const App: React.FC = () => {
             {isLoading && items.length === 0 ? (
               <div className="flex h-full w-full flex-col items-center justify-center gap-4 bg-white/90">
                 <div className="h-10 w-10 border-4 border-blue-100 border-t-blue-500 rounded-full animate-spin"></div>
-                <span className="text-sm font-black text-gray-400 tracking-widest uppercase animate-pulse">Menghubungkan...</span>
+                <span className="text-sm font-black text-gray-400 tracking-widest uppercase animate-pulse">Sinkronisasi...</span>
               </div>
             ) : (
               view === 'list' ? (
