@@ -14,7 +14,6 @@ import {
   Search as SearchIcon, 
   Settings,
   Image as ImageIcon,
-  Monitor,
   CloudUpload,
   CheckCircle2
 } from 'lucide-react';
@@ -98,7 +97,6 @@ const App: React.FC = () => {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(data)
       });
-      console.log("Synced to Spreadsheet successfully");
     } catch (error) {
       console.error("Sync failed", error);
     } finally {
@@ -127,9 +125,17 @@ const App: React.FC = () => {
   };
 
   const handleDelete = (id: string) => {
-    if (window.confirm('Hapus dokumen ini secara permanen?')) {
-      setItems(prev => prev.filter(item => item.id !== id));
-      if (editingId === id) setEditingId(null);
+    const password = prompt('Masukkan kata sandi admin untuk menghapus data:');
+    
+    if (password === null) return; // User cancelled
+
+    if (password === 'admin123') {
+      if (window.confirm('Konfirmasi: Hapus dokumen ini secara permanen?')) {
+        setItems(prev => prev.filter(item => item.id !== id));
+        if (editingId === id) setEditingId(null);
+      }
+    } else {
+      alert('Kata sandi salah! Akses ditolak.');
     }
   };
 
@@ -214,13 +220,8 @@ const App: React.FC = () => {
                     />
                   </div>
                 </div>
-                <div>
-                  <h3 className="mb-2 px-3 text-[11px] font-bold uppercase tracking-wider text-[#8E8E93]">Sekolah</h3>
-                  <SidebarItem icon={<Monitor size={16} />} label="Profil Sekolah" active={false} onClick={() => {}} />
-                  <SidebarItem icon={<Settings size={16} />} label="Sistem" active={false} onClick={() => {}} />
-                </div>
                 <div className="pt-4 border-t border-black/5">
-                  <SidebarItem icon={<Home size={16} />} label="Log Out" active={false} onClick={() => setCurrentPage('home')} />
+                  <SidebarItem icon={<Home size={16} />} label="Keluar ke Beranda" active={false} onClick={() => setCurrentPage('home')} />
                 </div>
               </div>
             }
@@ -257,7 +258,7 @@ const App: React.FC = () => {
         <DockIcon 
           icon={<Settings className="text-[#8E8E93] fill-gray-500/20" />} 
           label="Pengaturan" 
-          onClick={() => {}} 
+          onClick={() => alert('Sistem Pengaturan diaktifkan otomatis oleh Admin.')} 
         />
       </div>
     </div>
