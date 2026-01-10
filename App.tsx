@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { MacWindow } from './components/MacWindow.tsx';
 import { DocForm } from './components/DocForm.tsx';
@@ -11,20 +10,15 @@ import {
   Home, 
   Wifi, 
   Battery, 
-  Search as SearchIcon, 
-  Settings,
   Image as ImageIcon,
   CheckCircle2,
   RefreshCw,
   AlertCircle,
-  LayoutGrid,
   X
 } from 'lucide-react';
 
-// URL WEB APP DARI USER
 const SCRIPT_URL = "https://script.google.com/macros/s/AKfycbwS_ZiNHJH214i_u8AF7BuZWXZopIG6YThNr96jx5pAJ_z7HBI0W0wuCER7ea1xEzQulw/exec"; 
 
-// --- DATABASE UTILITY (INDEXED DB) ---
 const DB_NAME = 'SMPN3PacetDB';
 const STORE_NAME = 'documentation';
 
@@ -38,7 +32,6 @@ const openDB = (): Promise<IDBDatabase> => {
       }
     };
     request.onsuccess = () => resolve(request.result);
-    // Fix: replaced undefined variable 'error' with 'request.error' which contains the DOMException for IndexedDB requests
     request.onerror = () => reject(request.error);
   });
 };
@@ -147,7 +140,6 @@ const App: React.FC = () => {
         await saveToLocalDB(sorted);
       }
     } catch (err: any) {
-      console.error("Cloud Error:", err);
       setError("Offline");
     } finally {
       setIsLoading(false);
@@ -172,7 +164,6 @@ const App: React.FC = () => {
       });
       return true;
     } catch (error) {
-      console.error("Sync error:", error);
       return false;
     } finally {
       setIsSyncing(false);
@@ -258,39 +249,18 @@ const App: React.FC = () => {
   return (
     <div className="flex flex-col h-screen w-screen font-sans overflow-hidden bg-gradient-to-br from-[#1e3a8a] via-[#581c87] to-[#1e1b4b] relative">
       
-      {/* Menu Bar - Taller and More Visible for Tablet/Mobile */}
-      <header className="flex-none z-[100] flex h-9 md:h-10 items-center justify-between bg-black/30 md:bg-white/10 px-4 text-[13px] font-bold text-white backdrop-blur-3xl border-b border-white/5">
-        <div className="flex items-center gap-3 md:gap-4 overflow-hidden">
-          {/* School Name - Dynamic font size */}
-          <div className="flex items-center gap-2 shrink-0">
-            <School size={16} strokeWidth={3} className="text-white" />
-            <span className="font-extrabold uppercase tracking-tight text-[11px] md:text-[13px] whitespace-nowrap">
-              <span className="md:inline hidden">SMPN 3 PACET</span>
-              <span className="md:hidden inline">SPEN3 PACET</span>
-            </span>
-          </div>
-
-          {/* Status Badge - Higher contrast and better spacing */}
-          <div 
-            className="flex items-center gap-2 px-2.5 py-1 rounded-full bg-white/10 hover:bg-white/20 cursor-pointer transition-all border border-white/10" 
-            onClick={() => setShowDiagnostic(true)}
-          >
-            {isSyncing || isLoading ? (
-              <RefreshCw size={11} className="animate-spin text-blue-300" />
-            ) : (
-              <CheckCircle2 size={12} className={error ? 'text-orange-400' : 'text-green-400'} />
-            )}
-            <span className="text-[10px] uppercase tracking-widest font-black leading-none">
-              {isSyncing ? 'Syncing' : error ? 'Offline' : 'Online'}
-            </span>
+      {/* Global Menu Bar - Simplified for Minimalist Look */}
+      <header className="flex-none z-[100] flex h-8 items-center justify-between bg-black/20 px-4 text-[13px] font-bold text-white backdrop-blur-3xl border-b border-white/5">
+        <div className="flex items-center gap-4">
+          <div className="hover:bg-white/10 px-2 py-0.5 rounded cursor-default transition-colors">
+            <School size={14} className="inline mr-2 mb-0.5" />
+            <span className="text-[11px] uppercase tracking-[0.2em] font-black">macOS Documenter</span>
           </div>
         </div>
-
-        {/* Right Info - Time & Icons */}
-        <div className="flex items-center gap-2 md:gap-3 shrink-0">
-          <Wifi size={14} className="opacity-80 md:opacity-100" />
-          <Battery size={16} className="opacity-80 md:opacity-100" />
-          <span className="text-[11px] md:text-[12px] font-black tabular-nums tracking-tighter">
+        <div className="flex items-center gap-3">
+          <Wifi size={14} className="opacity-70" />
+          <Battery size={16} className="opacity-70" />
+          <span className="text-[11px] font-black tabular-nums tracking-tighter">
             {time.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })}
           </span>
         </div>
@@ -300,12 +270,35 @@ const App: React.FC = () => {
       <main className="flex-1 min-h-0 flex items-center justify-center relative p-3 sm:p-4 md:p-8 lg:p-10 pb-20 md:pb-24 overflow-hidden">
         <div className="w-full h-full max-w-7xl animate-scale-in">
           <MacWindow 
-            title={editingId ? "EDITOR" : (view === 'list' ? "PUSTAKA" : "ENTRY BARU")}
+            title={editingId ? "EDITOR MODE" : (view === 'list' ? "GALERI DOKUMENTASI" : "ENTRY DATA BARU")}
+            brand={
+              <div className="flex items-center gap-2">
+                <School size={16} strokeWidth={3} className="text-[#007AFF]" />
+                <span className="font-extrabold uppercase tracking-tight text-[11px] md:text-[13px] text-gray-800 whitespace-nowrap">
+                  SMPN 3 PACET
+                </span>
+              </div>
+            }
+            status={
+              <div 
+                className={`flex items-center gap-1.5 px-2 py-0.5 rounded-full border transition-all cursor-pointer ${error ? 'bg-orange-50 border-orange-200 text-orange-600' : 'bg-green-50 border-green-200 text-green-600'}`}
+                onClick={() => setShowDiagnostic(true)}
+              >
+                {isSyncing || isLoading ? (
+                  <RefreshCw size={10} className="animate-spin" />
+                ) : (
+                  <CheckCircle2 size={10} strokeWidth={3} />
+                )}
+                <span className="text-[9px] uppercase tracking-widest font-black hidden xs:inline">
+                  {isSyncing ? 'Sync' : error ? 'Offline' : 'Online'}
+                </span>
+              </div>
+            }
             navigation={
               <div className="flex items-center justify-between w-full gap-2">
                 <div className="flex items-center gap-1 bg-black/5 p-1 rounded-xl overflow-x-auto no-scrollbar">
-                  <button onClick={() => setView('list')} className={`whitespace-nowrap px-3 md:px-4 py-1.5 rounded-lg text-[11px] md:text-xs font-bold transition-all ${view === 'list' ? 'bg-[#007AFF] text-white shadow-md' : 'text-gray-600 hover:bg-black/5'}`}>Gallery</button>
-                  <button onClick={() => { setView('form'); setEditingId(null); }} className={`whitespace-nowrap px-3 md:px-4 py-1.5 rounded-lg text-[11px] md:text-xs font-bold transition-all ${view === 'form' ? 'bg-[#007AFF] text-white shadow-md' : 'text-gray-600 hover:bg-black/5'}`}>Tambah</button>
+                  <button onClick={() => setView('list')} className={`whitespace-nowrap px-3 md:px-5 py-1.5 rounded-lg text-[11px] md:text-xs font-bold transition-all ${view === 'list' ? 'bg-[#007AFF] text-white shadow-md' : 'text-gray-600 hover:bg-black/5'}`}>Gallery</button>
+                  <button onClick={() => { setView('form'); setEditingId(null); }} className={`whitespace-nowrap px-3 md:px-5 py-1.5 rounded-lg text-[11px] md:text-xs font-bold transition-all ${view === 'form' ? 'bg-[#007AFF] text-white shadow-md' : 'text-gray-600 hover:bg-black/5'}`}>Tambah</button>
                 </div>
                 <div className="flex items-center gap-2 md:gap-4 shrink-0">
                    <div className="hidden sm:block px-3 py-1 bg-black/5 rounded-lg text-[10px] font-black text-gray-400 uppercase tracking-tighter">{items.length} ITEM</div>
@@ -317,7 +310,7 @@ const App: React.FC = () => {
             {isLoading && items.length === 0 ? (
               <div className="flex h-full w-full flex-col items-center justify-center gap-4">
                 <div className="h-10 w-10 border-4 border-blue-100 border-t-blue-500 rounded-full animate-spin"></div>
-                <span className="text-[10px] font-black text-gray-400 uppercase tracking-[0.2em]">Memuat Database...</span>
+                <span className="text-[10px] font-black text-gray-400 uppercase tracking-[0.2em]">Memuat...</span>
               </div>
             ) : (
               view === 'list' ? (
@@ -341,16 +334,16 @@ const App: React.FC = () => {
       </div>
 
       {showDiagnostic && (
-        <div className="absolute top-12 left-1/2 -translate-x-1/2 md:left-4 md:translate-x-0 z-[150] w-[90%] md:w-80 p-5 bg-white/95 backdrop-blur-2xl rounded-3xl shadow-2xl border border-black/10 animate-scale-in">
+        <div className="absolute top-20 left-1/2 -translate-x-1/2 md:left-10 md:translate-x-0 z-[150] w-[90%] md:w-80 p-6 bg-white/95 backdrop-blur-2xl rounded-3xl shadow-2xl border border-black/10 animate-scale-in">
           <div className="flex items-center justify-between mb-4">
-            <h3 className="text-[11px] font-black uppercase text-gray-500">Pusat Informasi Cloud</h3>
-            <button onClick={() => setShowDiagnostic(false)} className="text-gray-400 hover:text-black transition-colors"><X size={18}/></button>
+            <h3 className="text-[11px] font-black uppercase text-gray-500">Info Koneksi</h3>
+            <button onClick={() => setShowDiagnostic(false)} className="text-gray-400 hover:text-black"><X size={18}/></button>
           </div>
           <div className="bg-black/5 p-4 rounded-2xl mb-4">
-            <p className="text-[10px] font-black text-gray-400 mb-1 uppercase tracking-widest">Koneksi Sistem</p>
-            <p className={`text-xs font-bold ${error ? 'text-red-600' : 'text-green-600'}`}>{error ? 'Terputus (Offline)' : 'Tersambung (Aktif)'}</p>
+            <p className="text-[10px] font-black text-gray-400 mb-1 uppercase tracking-widest">Database Cloud</p>
+            <p className={`text-xs font-bold ${error ? 'text-red-600' : 'text-green-600'}`}>{error ? 'Terputus' : 'Aktif'}</p>
           </div>
-          <button onClick={() => { fetchDataFromCloud(); setShowDiagnostic(false); }} className="w-full bg-blue-600 text-white text-[11px] font-black py-3 rounded-2xl hover:bg-blue-700 shadow-xl shadow-blue-500/30 uppercase tracking-widest transition-all active:scale-95">Paksa Sinkron Ulang</button>
+          <button onClick={() => { fetchDataFromCloud(); setShowDiagnostic(false); }} className="w-full bg-blue-600 text-white text-[11px] font-black py-3 rounded-2xl hover:bg-blue-700 shadow-xl shadow-blue-500/30 uppercase transition-all active:scale-95">Refresh Cloud</button>
         </div>
       )}
     </div>
