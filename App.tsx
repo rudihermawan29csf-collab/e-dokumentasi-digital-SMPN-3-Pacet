@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { MacWindow } from './components/MacWindow.tsx';
 import { DocForm } from './components/DocForm.tsx';
 import { DocList } from './components/DocList.tsx';
@@ -24,8 +24,6 @@ import {
 const SCRIPT_URL = "https://script.google.com/macros/s/AKfycbwS_ZiNHJH214i_u8AF7BuZWXZopIG6YThNr96jx5pAJ_z7HBI0W0wuCER7ea1xEzQulw/exec"; 
 
 // --- DATABASE UTILITY (INDEXED DB) ---
-// LocalStorage memiliki limit 5MB, foto base64 akan cepat penuh.
-// IndexedDB digunakan untuk penyimpanan lokal yang lebih besar (ratusan MB).
 const DB_NAME = 'SMPN3PacetDB';
 const STORE_NAME = 'documentation';
 
@@ -47,11 +45,18 @@ const saveToLocalDB = async (items: DocumentationItem[]) => {
   const db = await openDB();
   const tx = db.transaction(STORE_NAME, 'readwrite');
   const store = tx.objectStore(STORE_NAME);
-  store.clear();
+  // Gunakan put agar tidak menghapus data yang sudah ada tapi tidak ada di list kiriman
   items.forEach(item => store.put(item));
   return new Promise((resolve) => {
     tx.oncomplete = () => resolve(true);
   });
+};
+
+const removeFromLocalDB = async (id: string) => {
+  const db = await openDB();
+  const tx = db.transaction(STORE_NAME, 'readwrite');
+  const store = tx.objectStore(STORE_NAME);
+  store.delete(id);
 };
 
 const getFromLocalDB = async (): Promise<DocumentationItem[]> => {
@@ -68,6 +73,31 @@ const getFromLocalDB = async (): Promise<DocumentationItem[]> => {
   }
 };
 
+// Fungsi Kompresi Gambar agar Base64 tidak terlalu besar untuk Google Sheets (Limit sel 50k char)
+const compressImage = (base64: string, maxWidth = 800, quality = 0.6): Promise<string> => {
+  return new Promise((resolve) => {
+    const img = new Image();
+    img.src = base64;
+    img.onload = () => {
+      const canvas = document.createElement('canvas');
+      let width = img.width;
+      let height = img.height;
+
+      if (width > maxWidth) {
+        height = (maxWidth / width) * height;
+        width = maxWidth;
+      }
+
+      canvas.width = width;
+      canvas.height = height;
+      const ctx = canvas.getContext('2d');
+      ctx?.drawImage(img, 0, 0, width, height);
+      resolve(canvas.toDataURL('image/jpeg', quality));
+    };
+    img.onerror = () => resolve(base64);
+  });
+};
+
 const fileToBase64 = (file: File): Promise<string> => {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
@@ -76,48 +106,6 @@ const fileToBase64 = (file: File): Promise<string> => {
     reader.onerror = error => reject(error);
   });
 };
-
-const NavItem: React.FC<{ 
-  icon: React.ReactNode; 
-  label: string; 
-  active: boolean; 
-  onClick: () => void 
-}> = ({ icon, label, active, onClick }) => (
-  <button
-    onClick={onClick}
-    className={`flex items-center gap-2 rounded-lg px-3 md:px-4 py-1.5 text-[11px] md:text-[13px] font-bold transition-all ${
-      active 
-        ? 'bg-[#007AFF] text-white shadow-md shadow-blue-500/20' 
-        : 'text-[#424242] hover:bg-black/5'
-    }`}
-  >
-    <span className={active ? 'text-white' : 'text-[#007AFF]'}>{icon}</span>
-    <span className={label === 'Gallery' || label === 'Tambah' ? 'block' : 'hidden sm:block'}>{label}</span>
-  </button>
-);
-
-const DockIcon: React.FC<{ 
-  icon: React.ReactNode; 
-  label: string; 
-  active?: boolean; 
-  onClick: () => void 
-}> = ({ icon, label, active, onClick }) => (
-  <div className="group relative flex flex-col items-center">
-    <div className="absolute -top-10 scale-0 rounded-md bg-black/80 px-2 py-1 text-[11px] font-semibold text-white transition-all group-hover:scale-100 backdrop-blur-md whitespace-nowrap">
-      {label}
-    </div>
-    <button
-      onClick={onClick}
-      className={`relative flex h-10 w-10 md:h-12 md:w-12 items-center justify-center rounded-xl bg-white/40 shadow-lg ring-1 ring-white/20 transition-all hover:scale-125 hover:-translate-y-2 active:scale-95 backdrop-blur-xl ${
-        active ? 'after:absolute after:-bottom-2 after:h-1 after:w-1 after:rounded-full after:bg-white/80' : ''
-      }`}
-    >
-      <div className="transition-transform group-hover:scale-110">
-        {React.isValidElement(icon) ? React.cloneElement(icon as React.ReactElement<any>, { size: 24 }) : icon}
-      </div>
-    </button>
-  </div>
-);
 
 const App: React.FC = () => {
   const [items, setItems] = useState<DocumentationItem[]>([]);
@@ -129,20 +117,23 @@ const App: React.FC = () => {
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [showDiagnostic, setShowDiagnostic] = useState(false);
+  
+  // Track IDs yang baru dibuat secara lokal agar tidak tertimpa data Cloud yang lama
+  const recentlyAddedIds = useRef<Set<string>>(new Set());
 
-  // Load initial data dari IndexedDB saat startup
+  const loadInitial = async () => {
+    const localData = await getFromLocalDB();
+    if (localData.length > 0) {
+      setItems(localData.sort((a, b) => b.createdAt - a.createdAt));
+    }
+  };
+
   useEffect(() => {
-    const loadInitial = async () => {
-      const localData = await getFromLocalDB();
-      if (localData.length > 0) {
-        setItems(localData.sort((a, b) => b.createdAt - a.createdAt));
-      }
-    };
     loadInitial();
   }, []);
 
   const fetchDataFromCloud = useCallback(async () => {
-    if (!SCRIPT_URL) return;
+    if (!SCRIPT_URL || isSyncing) return;
     setIsLoading(true);
     setError(null);
     
@@ -153,23 +144,32 @@ const App: React.FC = () => {
       });
       
       if (!response.ok) throw new Error(`HTTP ${response.status}`);
+      const cloudData: DocumentationItem[] = await response.json();
       
-      const data = await response.json();
-      
-      if (Array.isArray(data)) {
-        const sortedData = data.sort((a, b) => b.createdAt - a.createdAt);
-        setItems(sortedData);
-        await saveToLocalDB(sortedData);
-      } else {
-        throw new Error("Data cloud tidak valid");
+      if (Array.isArray(cloudData)) {
+        const localData = await getFromLocalDB();
+        
+        // Logic Smart Merging: 
+        // 1. Ambil semua dari Cloud
+        // 2. Tambahkan data Lokal yang statusnya "Baru Saja Dibuat" (belum masuk Cloud)
+        const cloudIds = new Set(cloudData.map(i => i.id));
+        const unsyncedLocal = localData.filter(i => 
+          recentlyAddedIds.current.has(i.id) && !cloudIds.has(i.id)
+        );
+
+        const merged = [...cloudData, ...unsyncedLocal];
+        const sorted = merged.sort((a, b) => b.createdAt - a.createdAt);
+        
+        setItems(sorted);
+        await saveToLocalDB(sorted);
       }
     } catch (err: any) {
-      console.error("Cloud Error:", err);
-      setError("Gagal sinkron cloud (Bekerja Offline)");
+      console.error("Cloud Fetch Error:", err);
+      setError("Cloud Offline (Menggunakan Data Lokal)");
     } finally {
       setIsLoading(false);
     }
-  }, []);
+  }, [isSyncing]);
 
   useEffect(() => {
     const timer = setInterval(() => setTime(new Date()), 1000);
@@ -183,13 +183,9 @@ const App: React.FC = () => {
     if (!SCRIPT_URL) return false;
     setIsSyncing(true);
     try {
-      // Mengirim payload ke Google Apps Script
-      // Kita gunakan mode: 'cors' jika script mengijinkan, jika tidak 'no-cors' tapi kita tidak bisa baca balasan.
       await fetch(SCRIPT_URL, {
         method: 'POST',
-        headers: {
-          'Content-Type': 'text/plain;charset=utf-8',
-        },
+        headers: { 'Content-Type': 'text/plain;charset=utf-8' },
         body: JSON.stringify({ action, data }),
         redirect: 'follow'
       });
@@ -198,22 +194,21 @@ const App: React.FC = () => {
       console.error("Sync error:", error);
       return false;
     } finally {
-      setTimeout(() => setIsSyncing(false), 1500);
-      // Jangan langsung fetch agar tidak tabrakan dengan proses POST
-      setTimeout(fetchDataFromCloud, 4000);
+      setIsSyncing(false);
+      // Tunggu 5 detik baru fetch lagi agar Sheet sempat memproses
+      setTimeout(fetchDataFromCloud, 5000);
     }
   };
 
   const processFilesForCloud = async (files: DocFile[]): Promise<DocFile[]> => {
     return await Promise.all(files.map(async f => {
       if (f.file instanceof File) {
-        const base64 = await fileToBase64(f.file);
-        return { 
-          id: f.id, 
-          url: base64, 
-          type: f.type,
-          name: f.file.name 
-        };
+        let base64 = await fileToBase64(f.file);
+        // Kompres jika gambar
+        if (f.type === 'image') {
+          base64 = await compressImage(base64);
+        }
+        return { id: f.id, url: base64, type: f.type, name: f.file.name };
       }
       return f;
     }));
@@ -230,6 +225,10 @@ const App: React.FC = () => {
         files: processedFiles
       };
       
+      // Kunci ID ini agar tidak tertimpa sinkronisasi selama 2 menit
+      recentlyAddedIds.current.add(newItem.id);
+      setTimeout(() => recentlyAddedIds.current.delete(newItem.id), 120000);
+
       const newItems = [newItem, ...items];
       setItems(newItems);
       await saveToLocalDB(newItems);
@@ -237,7 +236,7 @@ const App: React.FC = () => {
       
       await syncToSpreadsheet(newItem, 'add');
     } catch (e) {
-      alert("Error saat menyimpan. Mungkin ukuran foto terlalu besar.");
+      alert("Gagal menyimpan. Coba kurangi jumlah foto.");
     } finally {
       setIsLoading(false);
     }
@@ -278,82 +277,50 @@ const App: React.FC = () => {
         const itemToDelete = items.find(i => i.id === id);
         const newItems = items.filter(item => item.id !== id);
         setItems(newItems);
-        await saveToLocalDB(newItems);
+        await removeFromLocalDB(id);
         if (itemToDelete) await syncToSpreadsheet(itemToDelete, 'delete');
       }
     } else if (password !== null) {
-      alert('Sandi salah. Akses ditolak.');
+      alert('Sandi salah.');
     }
   };
 
-  if (currentPage === 'home') {
-    return <LandingPage onEnter={() => setCurrentPage('app')} />;
-  }
+  if (currentPage === 'home') return <LandingPage onEnter={() => setCurrentPage('app')} />;
 
   const editingItem = items.find(item => item.id === editingId);
 
   return (
     <div className="relative h-screen w-screen font-sans overflow-hidden bg-gradient-to-br from-[#1e3a8a] via-[#581c87] to-[#1e1b4b]">
-      
-      {/* macOS Menu Bar */}
+      {/* Menu Bar */}
       <div className="absolute top-0 left-0 right-0 z-[100] flex h-7 items-center justify-between bg-white/10 px-4 text-[13px] font-bold text-white backdrop-blur-3xl border-b border-white/5">
         <div className="flex items-center gap-4">
           <div className="flex items-center gap-2 px-2 hover:bg-white/10 rounded cursor-default transition-colors">
             <School size={14} strokeWidth={3} />
             <span className="font-extrabold tracking-tight uppercase">SMPN 3 PACET</span>
           </div>
-          
-          <div 
-            className="flex items-center gap-2 px-2 py-0.5 rounded hover:bg-white/10 cursor-pointer transition-all"
-            onClick={() => setShowDiagnostic(true)}
-          >
-            {isSyncing || isLoading ? (
-              <RefreshCw size={12} className="animate-spin text-blue-300" />
-            ) : error ? (
-              <AlertCircle size={13} className="text-orange-400" />
-            ) : (
-              <CheckCircle2 size={13} className="text-green-400" />
-            )}
-            <span className="text-[10px] uppercase tracking-widest opacity-80 font-black">
-              {isSyncing ? 'Sinkron Cloud' : isLoading ? 'Loading' : error ? 'Cloud Offline' : 'Cloud Aktif'}
-            </span>
+          <div className="flex items-center gap-2 px-2 py-0.5 rounded hover:bg-white/10 cursor-pointer transition-all" onClick={() => setShowDiagnostic(true)}>
+            {isSyncing || isLoading ? <RefreshCw size={12} className="animate-spin text-blue-300" /> : error ? <AlertCircle size={13} className="text-orange-400" /> : <CheckCircle2 size={13} className="text-green-400" />}
+            <span className="text-[10px] uppercase tracking-widest opacity-80 font-black">{isSyncing ? 'Sinkron Cloud' : isLoading ? 'Loading' : error ? 'Cloud Offline' : 'Cloud Aktif'}</span>
           </div>
         </div>
-        
         <div className="flex items-center gap-4 pr-1">
-          <SearchIcon size={14} className="opacity-70 hover:opacity-100 cursor-pointer" />
-          <Wifi size={14} />
-          <Battery size={16} />
-          <span className="text-[12px] font-black tabular-nums tracking-tighter">
-            {time.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })}
-          </span>
+          <Wifi size={14} /><Battery size={16} /><span className="text-[12px] font-black tabular-nums tracking-tighter">{time.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })}</span>
         </div>
       </div>
 
-      {/* Diagnostic Panel */}
       {showDiagnostic && (
         <div className="absolute top-10 left-4 z-[110] w-80 p-5 bg-white/95 backdrop-blur-2xl rounded-3xl shadow-2xl border border-black/10 animate-scale-in">
           <div className="flex items-center justify-between mb-4">
-            <h3 className="text-[11px] font-black uppercase text-gray-500 tracking-[0.2em]">Pusat Kontrol Cloud</h3>
+            <h3 className="text-[11px] font-black uppercase text-gray-500 tracking-[0.2em]">Status Database</h3>
             <button onClick={() => setShowDiagnostic(false)} className="text-gray-400 hover:text-black"><X size={18}/></button>
           </div>
           <div className="space-y-4">
-            <div className="bg-black/5 p-4 rounded-2xl border border-black/5">
-              <p className="text-[10px] font-black uppercase text-gray-400 mb-1">Status Sistem</p>
-              <p className={`text-sm font-bold ${error ? 'text-red-600' : 'text-green-600'}`}>{error || 'Tersambung ke Google Sheets'}</p>
-            </div>
-            <div className="bg-blue-50 p-4 rounded-2xl border border-blue-100">
-              <p className="text-[10px] font-black uppercase text-blue-400 mb-1">Link Terhubung</p>
-              <p className="text-[9px] font-mono break-all text-blue-800 opacity-70 leading-relaxed">{SCRIPT_URL}</p>
+            <div className="bg-black/5 p-4 rounded-2xl">
+              <p className="text-[10px] font-black uppercase text-gray-400 mb-1">Penyimpanan</p>
+              <p className="text-sm font-bold text-blue-600">IndexedDB (Stabil & Kapasitas Besar)</p>
             </div>
           </div>
-          <button 
-            onClick={() => { fetchDataFromCloud(); setShowDiagnostic(false); }}
-            className="w-full mt-5 bg-blue-600 text-white text-xs font-black py-3.5 rounded-2xl hover:bg-blue-700 transition-all shadow-xl shadow-blue-500/30 active:scale-95 flex items-center justify-center gap-2"
-          >
-            <RefreshCw size={14} className={isLoading ? 'animate-spin' : ''} />
-            PAKSA SINKRON ULANG
-          </button>
+          <button onClick={() => { fetchDataFromCloud(); setShowDiagnostic(false); }} className="w-full mt-5 bg-blue-600 text-white text-xs font-black py-3.5 rounded-2xl hover:bg-blue-700 shadow-xl shadow-blue-500/30">REFRESH DATABASE</button>
         </div>
       )}
 
@@ -362,59 +329,44 @@ const App: React.FC = () => {
           <MacWindow 
             title={editingId ? "EDITOR DOKUMEN" : (view === 'list' ? "PUSTAKA DIGITAL SMPN 3 PACET" : "ENTRY DOKUMEN BARU")}
             navigation={
-              <>
+              <div className="flex items-center justify-between w-full">
                 <div className="flex items-center gap-1 bg-black/5 p-1 rounded-xl">
-                  <NavItem icon={<LayoutGrid size={16} />} label="Gallery" active={view === 'list'} onClick={() => setView('list')} />
-                  <NavItem icon={<PlusCircle size={16} />} label="Tambah" active={view === 'form'} onClick={() => { setView('form'); setEditingId(null); }} />
+                  <button onClick={() => setView('list')} className={`px-4 py-1.5 rounded-lg text-xs font-bold transition-all ${view === 'list' ? 'bg-[#007AFF] text-white shadow-md' : 'text-gray-600'}`}>Gallery</button>
+                  <button onClick={() => { setView('form'); setEditingId(null); }} className={`px-4 py-1.5 rounded-lg text-xs font-bold transition-all ${view === 'form' ? 'bg-[#007AFF] text-white shadow-md' : 'text-gray-600'}`}>Tambah</button>
                 </div>
-                
-                <div className="flex items-center gap-4">
-                  <div className="flex items-center gap-2 px-3 py-1 bg-black/5 rounded-lg">
-                    <span className="text-[10px] font-black text-gray-400">{items.length} ITEM</span>
-                  </div>
-                  <button onClick={() => setCurrentPage('home')} className="flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-black text-red-500 hover:bg-red-50 transition-colors border border-transparent hover:border-red-100">
-                    <Home size={16} />
-                    <span className="hidden sm:inline">HOME</span>
-                  </button>
+                <div className="flex items-center gap-3">
+                   <div className="px-3 py-1 bg-black/5 rounded-lg text-[10px] font-black text-gray-400 uppercase">{items.length} KEGIATAN</div>
+                   <button onClick={() => setCurrentPage('home')} className="p-1.5 rounded-lg text-red-500 hover:bg-red-50 transition-colors"><Home size={18} /></button>
                 </div>
-              </>
+              </div>
             }
           >
             {isLoading && items.length === 0 ? (
               <div className="flex h-full w-full flex-col items-center justify-center gap-5">
-                <div className="relative">
-                  <div className="h-16 w-16 border-4 border-blue-100 border-t-blue-500 rounded-full animate-spin"></div>
-                  <School className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 text-blue-500" size={24} />
-                </div>
-                <div className="text-center">
-                  <span className="text-sm font-black text-gray-800 tracking-widest uppercase block">Menghubungkan Database</span>
-                  <span className="text-[10px] font-bold text-gray-400 uppercase tracking-[0.2em] mt-1 block">Tunggu Sebentar...</span>
-                </div>
+                <div className="h-12 w-12 border-4 border-blue-100 border-t-blue-500 rounded-full animate-spin"></div>
+                <span className="text-xs font-black text-gray-400 uppercase tracking-widest">Sinkronisasi Database...</span>
               </div>
             ) : (
               view === 'list' ? (
-                <DocList items={items} onEdit={(item) => { setEditingId(item.id); setView('form'); }} onDelete={handleDelete} onDownload={(item) => item.files.forEach(f => window.open(f.url))} />
+                <DocList items={items} onEdit={(item) => { setEditingId(item.id); setView('form'); }} onDelete={handleDelete} onDownload={() => {}} />
               ) : (
-                <DocForm 
-                  onSubmit={editingId ? handleUpdate : handleAdd} 
-                  onCancel={() => setView('list')} 
-                  initialData={editingItem}
-                />
+                <DocForm onSubmit={editingId ? handleUpdate : handleAdd} onCancel={() => setView('list')} initialData={editingItem} />
               )
             )}
           </MacWindow>
         </div>
       </main>
 
-      {/* macOS Dock */}
-      <div className="absolute bottom-6 left-1/2 -translate-x-1/2 z-[100] flex items-end gap-3 rounded-[2.5rem] bg-white/20 p-2.5 shadow-2xl backdrop-blur-3xl border border-white/20 ring-1 ring-black/5 transition-all">
-        <DockIcon icon={<Home className="text-blue-500" />} label="Home" onClick={() => setCurrentPage('home')} />
+      {/* Dock */}
+      <div className="absolute bottom-6 left-1/2 -translate-x-1/2 z-[100] flex items-end gap-3 rounded-[2.5rem] bg-white/20 p-2.5 shadow-2xl backdrop-blur-3xl border border-white/20 ring-1 ring-black/5">
+        <div className="group relative">
+          <button onClick={() => setCurrentPage('home')} className="flex h-12 w-12 items-center justify-center rounded-xl bg-white/40 shadow-lg backdrop-blur-xl transition-all hover:scale-125 hover:-translate-y-2"><Home size={24} className="text-blue-500"/></button>
+        </div>
         <div className="h-10 w-px bg-white/20 mx-1"></div>
-        <DockIcon icon={<ImageIcon className="text-emerald-500" />} label="Arsip Digital" active={view === 'list'} onClick={() => setView('list')} />
-        <DockIcon icon={<PlusCircle className="text-violet-500" />} label="Tambah Baru" active={view === 'form'} onClick={() => { setView('form'); setEditingId(null); }} />
+        <button onClick={() => setView('list')} className={`flex h-12 w-12 items-center justify-center rounded-xl bg-white/40 shadow-lg backdrop-blur-xl transition-all hover:scale-125 hover:-translate-y-2 ${view === 'list' ? 'ring-2 ring-white' : ''}`}><ImageIcon size={24} className="text-emerald-500"/></button>
+        <button onClick={() => { setView('form'); setEditingId(null); }} className={`flex h-12 w-12 items-center justify-center rounded-xl bg-white/40 shadow-lg backdrop-blur-xl transition-all hover:scale-125 hover:-translate-y-2 ${view === 'form' ? 'ring-2 ring-white' : ''}`}><PlusCircle size={24} className="text-violet-500"/></button>
         <div className="h-10 w-px bg-white/20 mx-1"></div>
-        <DockIcon icon={<RefreshCw className="text-amber-500" />} label="Cek Database" onClick={fetchDataFromCloud} />
-        <DockIcon icon={<Settings className="text-zinc-500" />} label="Status Cloud" onClick={() => setShowDiagnostic(true)} />
+        <button onClick={fetchDataFromCloud} className="flex h-12 w-12 items-center justify-center rounded-xl bg-white/40 shadow-lg backdrop-blur-xl transition-all hover:scale-125 hover:-translate-y-2"><RefreshCw size={24} className="text-amber-500"/></button>
       </div>
     </div>
   );
