@@ -1,10 +1,10 @@
 
 import React, { useState, useEffect } from 'react';
-import { MacWindow } from './components/MacWindow';
-import { DocForm } from './components/DocForm';
-import { DocList } from './components/DocList';
-import { LandingPage } from './components/LandingPage';
-import { DocumentationItem, FormData } from './types';
+import { MacWindow } from './components/MacWindow.tsx';
+import { DocForm } from './components/DocForm.tsx';
+import { DocList } from './components/DocList.tsx';
+import { LandingPage } from './components/LandingPage.tsx';
+import { DocumentationItem, FormData } from './types.ts';
 import { 
   School, 
   PlusCircle, 
@@ -19,7 +19,6 @@ import {
   CheckCircle2
 } from 'lucide-react';
 
-// URL Apps Script untuk sinkronisasi Spreadsheet
 const SCRIPT_URL = "https://script.google.com/macros/s/AKfycbyyzZlziNFwGuxiEnYMynPC5_mBAaktA7mQG0SQQyzASEp6GfU4BsJjvqyXkGUZzYwC/exec"; 
 
 const SidebarItem: React.FC<{ 
@@ -93,7 +92,6 @@ const App: React.FC = () => {
     if (!SCRIPT_URL) return;
     setIsSyncing(true);
     try {
-      // Kita kirim data sebagai JSON string ke Apps Script
       await fetch(SCRIPT_URL, {
         method: 'POST',
         mode: 'no-cors', 
@@ -104,7 +102,6 @@ const App: React.FC = () => {
     } catch (error) {
       console.error("Sync failed", error);
     } finally {
-      // Beri sedikit delay agar indikator sinkronisasi terlihat oleh user
       setTimeout(() => setIsSyncing(false), 1500);
     }
   };
@@ -165,7 +162,6 @@ const App: React.FC = () => {
   return (
     <div className="relative h-screen w-screen font-sans overflow-hidden bg-gradient-to-br from-indigo-900 to-purple-800">
       
-      {/* macOS Top Menu Bar */}
       <div className="absolute top-0 left-0 right-0 z-[100] flex h-7 items-center justify-between bg-white/10 px-4 text-[13px] font-semibold text-white backdrop-blur-2xl border-b border-white/10">
         <div className="flex items-center gap-5">
           <div className="hover:bg-white/10 px-2 rounded cursor-default">
@@ -195,7 +191,6 @@ const App: React.FC = () => {
         </div>
       </div>
 
-      {/* Main Desktop Area */}
       <main className="flex h-screen items-center justify-center p-4 md:p-8 pb-24 md:pb-32 pt-12 animate-fade-in">
         <div className="relative h-full w-full max-w-7xl animate-scale-in">
           <MacWindow 
@@ -239,7 +234,6 @@ const App: React.FC = () => {
         </div>
       </main>
 
-      {/* macOS Dock */}
       <div className="absolute bottom-4 md:bottom-6 left-1/2 z-[100] flex -translate-x-1/2 items-end gap-2 md:gap-3 rounded-[24px] bg-white/20 p-2 md:p-2.5 shadow-2xl backdrop-blur-3xl border border-white/20 ring-1 ring-black/5 max-w-[95vw] overflow-x-auto">
         <DockIcon 
           icon={<Home className="text-blue-500 fill-blue-500/20" />} 
