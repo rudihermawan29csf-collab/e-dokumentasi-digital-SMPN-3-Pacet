@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect, useCallback } from 'react';
 import { MacWindow } from './components/MacWindow.tsx';
 import { DocForm } from './components/DocForm.tsx';
@@ -22,10 +21,9 @@ import {
   Info,
   X
 } from 'lucide-react';
-import { GoogleGenAI } from "@google/genai";
 
 // Link yang Anda berikan
-const SCRIPT_URL = "https://script.google.com/macros/s/AKfycbyErX1k4jAQ6kZaWDTi5-Oy3wfYFE-ivk5cqMHlbn5saxSwDmz2rOEuMmEIuI2P13Rh/exec"; 
+const SCRIPT_URL = "https://script.google.com/macros/s/AKfycbytEzkDrH7A30Igmy5G1lv5z9mEHSXDqRMeHn7BsNa7Cvs5JiJ2DfaR9F2SXcW6L6kE/exec"; 
 
 const fileToBase64 = (file: File): Promise<string> => {
   return new Promise((resolve, reject) => {
@@ -103,7 +101,6 @@ const App: React.FC = () => {
       if (!response.ok) throw new Error(`HTTP ${response.status}`);
       
       const contentType = response.headers.get("content-type");
-      // Google redirects to login page (HTML) if not public
       if (contentType && contentType.includes("text/html")) {
         throw new Error("Izin Akses Ditolak");
       }
@@ -157,20 +154,6 @@ const App: React.FC = () => {
       return false;
     } finally {
       setTimeout(() => setIsSyncing(false), 1500);
-    }
-  };
-
-  const improveDescription = async (text: string): Promise<string> => {
-    if (!text) return text;
-    try {
-      const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
-      const response = await ai.models.generateContent({
-        model: 'gemini-3-flash-preview',
-        contents: `Tolong perbaiki dan buat deskripsi kegiatan sekolah berikut menjadi lebih profesional, menarik, dan informatif untuk laporan dokumentasi SMPN 3 PACET. Gunakan bahasa Indonesia yang baik: "${text}"`,
-      });
-      return response.text || text;
-    } catch (e) {
-      return text;
     }
   };
 
@@ -368,7 +351,6 @@ const App: React.FC = () => {
                   onSubmit={editingId ? handleUpdate : handleAdd} 
                   onCancel={() => setView('list')} 
                   initialData={editingItem}
-                  onImprove={improveDescription}
                 />
               )
             )}

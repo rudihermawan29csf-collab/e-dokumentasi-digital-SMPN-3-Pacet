@@ -1,21 +1,18 @@
-
 import React, { useState, useRef, useEffect } from 'react';
-import { Calendar, FileText, Image as ImageIcon, Upload, X, Plus, FileType, FileIcon, Save, ArrowLeft, Sparkles, Loader2 } from 'lucide-react';
+import { Calendar, FileText, Image as ImageIcon, Upload, X, Plus, FileType, FileIcon, Save, ArrowLeft } from 'lucide-react';
 import { DocumentationItem, DocFile } from '../types';
 
 interface DocFormProps {
   onSubmit: (data: Omit<DocumentationItem, 'id' | 'createdAt'>) => void;
   onCancel: () => void;
   initialData?: DocumentationItem | null;
-  onImprove?: (text: string) => Promise<string>;
 }
 
-export const DocForm: React.FC<DocFormProps> = ({ onSubmit, onCancel, initialData, onImprove }) => {
+export const DocForm: React.FC<DocFormProps> = ({ onSubmit, onCancel, initialData }) => {
   const [date, setDate] = useState('');
   const [activityName, setActivityName] = useState('');
   const [description, setDescription] = useState('');
   const [files, setFiles] = useState<DocFile[]>([]);
-  const [isImproving, setIsImproving] = useState(false);
   
   const imageInputRef = useRef<HTMLInputElement>(null);
   const pdfInputRef = useRef<HTMLInputElement>(null);
@@ -31,17 +28,8 @@ export const DocForm: React.FC<DocFormProps> = ({ onSubmit, onCancel, initialDat
     }
   }, [initialData]);
 
-  const handleImprove = async () => {
-    if (!description || !onImprove) return;
-    setIsImproving(true);
-    const result = await onImprove(description);
-    setDescription(result);
-    setIsImproving(false);
-  };
-
   const handleImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files) {
-      // Cast the resulting array to File[] to resolve TS 'unknown' inference issues
       const newFilesRaw = Array.from(e.target.files) as File[];
       const remainingSlots = 10 - files.filter(f => f.type === 'image').length;
       const filesToProcess = newFilesRaw.slice(0, remainingSlots);
@@ -61,7 +49,6 @@ export const DocForm: React.FC<DocFormProps> = ({ onSubmit, onCancel, initialDat
 
   const handlePdfChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files) {
-      // Cast the resulting array to File[] to resolve TS 'unknown' inference issues
       const newFilesRaw = Array.from(e.target.files) as File[];
       const remainingSlots = 5 - files.filter(f => f.type === 'pdf').length;
       const filesToProcess = newFilesRaw.slice(0, remainingSlots);
@@ -132,20 +119,9 @@ export const DocForm: React.FC<DocFormProps> = ({ onSubmit, onCancel, initialDat
         </div>
 
         <div className="space-y-3">
-          <div className="flex items-center justify-between">
-            <label className="text-[11px] font-black uppercase tracking-[0.2em] text-[#86868B] flex items-center gap-2">
-              <FileText className="w-4 h-4 text-blue-500" /> Deskripsi
-            </label>
-            <button 
-              type="button"
-              onClick={handleImprove}
-              disabled={isImproving || !description}
-              className="flex items-center gap-1.5 text-[10px] font-black uppercase tracking-widest text-indigo-600 bg-indigo-50 px-3 py-1.5 rounded-full hover:bg-indigo-100 disabled:opacity-50 transition-all"
-            >
-              {isImproving ? <Loader2 size={12} className="animate-spin" /> : <Sparkles size={12} />}
-              AI Improve
-            </button>
-          </div>
+          <label className="text-[11px] font-black uppercase tracking-[0.2em] text-[#86868B] flex items-center gap-2">
+            <FileText className="w-4 h-4 text-blue-500" /> Deskripsi
+          </label>
           <textarea
             value={description}
             onChange={(e) => setDescription(e.target.value)}
