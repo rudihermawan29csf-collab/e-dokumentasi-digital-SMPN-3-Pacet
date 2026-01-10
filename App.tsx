@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect, useCallback } from 'react';
 import { MacWindow } from './components/MacWindow.tsx';
 import { DocForm } from './components/DocForm.tsx';
@@ -20,7 +21,7 @@ import {
   LayoutGrid
 } from 'lucide-react';
 
-// URL Google Apps Script Terupdate
+// URL Google Apps Script Anda
 const SCRIPT_URL = "https://script.google.com/macros/s/AKfycbx15Ddy6ihMsc0e6zqaTC_GMJOsw5xPD7__HZfTxCQtoAW1YXeRrYtTg0gwmuJsWWYI/exec"; 
 
 const fileToBase64 = (file: File): Promise<string> => {
@@ -89,20 +90,25 @@ const App: React.FC = () => {
     setIsLoading(true);
     setError(null);
     try {
+      // Fetch data tanpa header tambahan untuk menghindari preflight CORS
       const response = await fetch(SCRIPT_URL);
-      if (!response.ok) throw new Error("Server Cloud tidak merespon.");
+      if (!response.ok) throw new Error("Server tidak merespon (404/500)");
+      
       const data = await response.json();
       
       if (Array.isArray(data)) {
         setItems(data);
         localStorage.setItem('smpn3_docs', JSON.stringify(data));
+        setError(null);
+      } else {
+        throw new Error("Format data tidak valid");
       }
     } catch (err) {
-      console.warn("Cloud fetch failed, using local storage:", err);
+      console.warn("Cloud fetch error:", err);
       const saved = localStorage.getItem('smpn3_docs');
       if (saved) {
         setItems(JSON.parse(saved));
-        setError("Cloud Offline (Cache)");
+        setError("Offline (Cache)");
       } else {
         setError("Koneksi Gagal");
       }
@@ -123,8 +129,8 @@ const App: React.FC = () => {
     if (!SCRIPT_URL) return false;
     setIsSyncing(true);
     try {
-      // Mengirimkan data sebagai string JSON dalam body POST
-      // Mode no-cors digunakan untuk menghindari masalah preflight CORS pada Google Apps Script
+      // Mengirim dengan mode no-cors adalah cara paling aman untuk Google Apps Script
+      // agar tidak terblokir kebijakan CORS browser saat melakukan POST.
       await fetch(SCRIPT_URL, {
         method: 'POST',
         mode: 'no-cors',
@@ -133,20 +139,21 @@ const App: React.FC = () => {
         },
         body: JSON.stringify({ action, data })
       });
+      
+      // Karena no-cors, kita tidak bisa membaca response. 
+      // Kita asumsikan terkirim jika tidak ada error network.
       return true;
     } catch (error) {
       console.error("Sync error:", error);
-      setError("Gagal Sinkron");
+      setError("Gagal Push");
       return false;
     } finally {
-      // Berikan waktu sedikit agar animasi syncing terlihat
       setTimeout(() => setIsSyncing(false), 2000);
     }
   };
 
   const processFilesForCloud = async (files: DocFile[]): Promise<DocFile[]> => {
     return await Promise.all(files.map(async f => {
-      // Jika f.file ada (berarti baru diupload), konversi ke base64
       if (f.file instanceof File) {
         const base64 = await fileToBase64(f.file);
         return { 
@@ -156,7 +163,6 @@ const App: React.FC = () => {
           name: f.file.name 
         };
       }
-      // Jika f.url sudah base64 (dari cloud) atau URL statis, biarkan saja
       return {
         id: f.id,
         url: f.url,
@@ -177,23 +183,17 @@ const App: React.FC = () => {
         files: processedFiles
       };
       
-      // Simpan di state lokal untuk responsivitas cepat
       const newItems = [newItem, ...items];
       setItems(newItems);
       localStorage.setItem('smpn3_docs', JSON.stringify(newItems));
       setView('list');
       
-      // Kirim data ke cloud spreadsheet
       const success = await syncToSpreadsheet(newItem, 'add');
-      if (!success) {
-        setError("Gagal kirim ke Cloud");
-      } else {
-        setError(null);
-      }
+      if (!success) setError("Gagal kirim ke Cloud");
       
     } catch (e) {
       console.error(e);
-      alert("Gagal memproses file. Pastikan ukuran file tidak terlalu besar.");
+      alert("Gagal memproses file. Ukuran file mungkin terlalu besar.");
     } finally {
       setIsLoading(false);
     }
@@ -228,7 +228,7 @@ const App: React.FC = () => {
   };
 
   const handleDelete = async (id: string) => {
-    const password = prompt('Masukkan kata sandi admin untuk menghapus:');
+    const password = prompt('Masukkan kata sandi admin (admin123):');
     if (password === 'admin123') {
       if (window.confirm('Hapus selamanya dari database cloud?')) {
         const itemToDelete = items.find(i => i.id === id);
@@ -289,7 +289,7 @@ const App: React.FC = () => {
               <CheckCircle2 size={13} className="text-green-400" />
             )}
             <span className="text-[9px] md:text-[10px] uppercase tracking-tighter">
-              {isLoading ? 'Sync' : isSyncing ? 'Push' : error ? 'Error' : 'Online'}
+              {isLoading ? 'Sync' : isSyncing ? 'Push' : error ? error : 'Online'}
             </span>
           </div>
         </div>
@@ -317,7 +317,7 @@ const App: React.FC = () => {
                 <div className="flex items-center gap-2 md:gap-4">
                   <div className="hidden sm:flex items-center gap-1.5 text-[#8E8E93] text-[10px] md:text-[11px] font-black uppercase tracking-widest px-2">
                     <span className={`w-2 h-2 rounded-full ${error ? 'bg-red-500' : 'bg-blue-500'} animate-pulse`}></span>
-                    {error ? 'Offline' : 'Live Cloud'}
+                    {error ? 'Offline' : 'Connected'}
                   </div>
                   <button onClick={() => setCurrentPage('home')} className="flex items-center gap-1.5 md:gap-2 px-2 md:px-3 py-1.5 rounded-lg text-xs md:text-sm font-black text-red-500 hover:bg-red-50 transition-colors">
                     <Home size={16} />
@@ -330,7 +330,7 @@ const App: React.FC = () => {
             {isLoading && items.length === 0 ? (
               <div className="flex h-full w-full flex-col items-center justify-center gap-4 bg-white/90">
                 <div className="h-10 w-10 border-4 border-blue-100 border-t-blue-500 rounded-full animate-spin"></div>
-                <span className="text-sm font-black text-gray-400 tracking-widest uppercase animate-pulse">Menghubungkan ke Cloud...</span>
+                <span className="text-sm font-black text-gray-400 tracking-widest uppercase animate-pulse">Menghubungkan...</span>
               </div>
             ) : (
               view === 'list' ? (
