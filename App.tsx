@@ -228,17 +228,39 @@ const App: React.FC = () => {
   };
 
   const handleDelete = async (id: string) => {
-    const password = prompt('Masukkan Sandi Admin:');
-    if (password === 'admin123') {
-      if (window.confirm('Hapus selamanya?')) {
+    const password = prompt('Masukkan Sandi Admin untuk menghapus data:');
+    // Cek password dengan trim() untuk menghindari spasi tak sengaja
+    if (password && password.trim() === 'admin123') {
+      if (window.confirm('Apakah Anda yakin ingin menghapus dokumentasi ini selamanya?')) {
         const itemToDelete = items.find(i => i.id === id);
+        // Hapus dari state dulu (Optimistic UI)
         const newItems = items.filter(item => item.id !== id);
         setItems(newItems);
+        
+        // Hapus dari Local DB
         await removeFromLocalDB(id);
-        if (itemToDelete) await syncToSpreadsheet(itemToDelete, 'delete');
+        
+        // Hapus dari Cloud
+        if (itemToDelete) {
+          syncToSpreadsheet(itemToDelete, 'delete').catch(console.error);
+        }
       }
     } else if (password !== null) {
-      alert('Sandi salah.');
+      alert('Sandi salah. Akses ditolak.');
+    }
+  };
+
+  const handleDownload = (item: DocumentationItem) => {
+    if (item.files && item.files.length > 0) {
+      const fileToDownload = item.files[0];
+      const link = document.createElement('a');
+      link.href = fileToDownload.url;
+      link.download = `Dokumentasi-${item.activityName.replace(/\s+/g, '-')}-${item.date}.jpg`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+    } else {
+      alert("Tidak ada file foto untuk diunduh.");
     }
   };
 
@@ -314,7 +336,7 @@ const App: React.FC = () => {
               </div>
             ) : (
               view === 'list' ? (
-                <DocList items={items} onEdit={(item) => { setEditingId(item.id); setView('form'); }} onDelete={handleDelete} onDownload={() => {}} />
+                <DocList items={items} onEdit={(item) => { setEditingId(item.id); setView('form'); }} onDelete={handleDelete} onDownload={handleDownload} />
               ) : (
                 <DocForm onSubmit={editingId ? handleUpdate : handleAdd} onCancel={() => setView('list')} initialData={editingItem} />
               )

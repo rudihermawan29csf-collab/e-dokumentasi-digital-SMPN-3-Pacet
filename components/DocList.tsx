@@ -1,4 +1,3 @@
-
 import React, { useState, useMemo } from 'react';
 import { Edit2, Trash2, Download, Image as ImageIcon, FileType, Search, X, ChevronRight, ChevronLeft, CalendarDays, Filter } from 'lucide-react';
 import { DocumentationItem } from '../types.ts';
@@ -24,7 +23,6 @@ export const DocList: React.FC<DocListProps> = ({ items, onEdit, onDelete, onDow
   }, [items, searchTerm, selectedYear]);
 
   const years = useMemo(() => {
-    // Explicitly cast to string[] to resolve TypeScript 'unknown' inference issues during sorting
     const y = Array.from(new Set(items.map(item => item.date.split('-')[0]))) as string[];
     return y.sort((a, b) => b.localeCompare(a));
   }, [items]);
@@ -137,8 +135,9 @@ export const DocList: React.FC<DocListProps> = ({ items, onEdit, onDelete, onDow
                               )}
                               
                               <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-3 backdrop-blur-[2px]">
-                                <button onClick={() => onEdit(item)} className="p-4 bg-white rounded-2xl shadow-xl hover:scale-110 active:scale-95 transition-all"><Edit2 size={20} className="text-blue-600" strokeWidth={3} /></button>
-                                <button onClick={() => onDelete(item.id)} className="p-4 bg-red-500 rounded-2xl shadow-xl hover:scale-110 active:scale-95 transition-all text-white"><Trash2 size={20} strokeWidth={3} /></button>
+                                <button onClick={() => onEdit(item)} className="p-3 bg-white rounded-xl shadow-xl hover:scale-110 active:scale-95 transition-all text-blue-600" title="Edit"><Edit2 size={18} strokeWidth={3} /></button>
+                                <button onClick={() => onDownload(item)} className="p-3 bg-white rounded-xl shadow-xl hover:scale-110 active:scale-95 transition-all text-emerald-600" title="Download Foto"><Download size={18} strokeWidth={3} /></button>
+                                <button onClick={() => onDelete(item.id)} className="p-3 bg-red-500 rounded-xl shadow-xl hover:scale-110 active:scale-95 transition-all text-white" title="Hapus"><Trash2 size={18} strokeWidth={3} /></button>
                               </div>
 
                               <div className="absolute bottom-4 right-4 flex items-center gap-2">
@@ -151,7 +150,7 @@ export const DocList: React.FC<DocListProps> = ({ items, onEdit, onDelete, onDow
                             <div className="p-6 flex flex-col flex-1">
                               <div className="flex items-center justify-between mb-3">
                                 <span className="text-[10px] font-black text-gray-400 uppercase tracking-widest">{new Date(item.date).toLocaleDateString('id-ID', { day: '2-digit', month: 'long' })}</span>
-                                <span className="text-[9px] font-black text-gray-300">#{item.id}</span>
+                                <span className="text-[9px] font-black text-gray-300">#{item.id.split('-')[1]?.substring(0,6)}</span>
                               </div>
                               <h4 className="text-lg font-black text-gray-900 line-clamp-1 group-hover:text-blue-600 transition-colors">{item.activityName}</h4>
                               <p className="mt-2 text-sm font-medium text-gray-500 line-clamp-2 leading-relaxed italic">{item.description || 'Kegiatan sekolah...'}</p>
