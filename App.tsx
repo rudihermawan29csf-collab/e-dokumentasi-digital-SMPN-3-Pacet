@@ -2,6 +2,7 @@ import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { MacWindow } from './components/MacWindow.tsx';
 import { DocForm } from './components/DocForm.tsx';
 import { DocList } from './components/DocList.tsx';
+import { DocDetail } from './components/DocDetail.tsx';
 import { LandingPage } from './components/LandingPage.tsx';
 import { DocumentationItem, FormData, DocFile } from './types.ts';
 import { 
@@ -103,7 +104,8 @@ const fileToBase64 = (file: File): Promise<string> => {
 const App: React.FC = () => {
   const [items, setItems] = useState<DocumentationItem[]>([]);
   const [editingId, setEditingId] = useState<string | null>(null);
-  const [view, setView] = useState<'list' | 'form'>('list'); 
+  const [view, setView] = useState<'list' | 'form' | 'detail'>('list'); 
+  const [detailItem, setDetailItem] = useState<DocumentationItem | null>(null);
   const [currentPage, setCurrentPage] = useState<'home' | 'app'>('home');
   const [time, setTime] = useState(new Date());
   const [isSyncing, setIsSyncing] = useState(false);
@@ -277,9 +279,22 @@ const App: React.FC = () => {
     }
   };
 
+  const handleViewDetail = (item: DocumentationItem) => {
+    setDetailItem(item);
+    setView('detail');
+  };
+
   if (currentPage === 'home') return <LandingPage onEnter={() => setCurrentPage('app')} />;
 
   const editingItem = items.find(item => item.id === editingId);
+
+  // Helper untuk title window
+  const getWindowTitle = () => {
+    if (view === 'detail') return "DETAIL MODE";
+    if (editingId) return "EDITOR MODE";
+    if (view === 'form') return "ENTRY DATA BARU";
+    return "GALERI DOKUMENTASI";
+  };
 
   return (
     <div className="flex flex-col h-screen w-screen font-sans overflow-hidden bg-gradient-to-br from-[#1e3a8a] via-[#581c87] to-[#1e1b4b] relative">
@@ -305,7 +320,7 @@ const App: React.FC = () => {
       <main className="flex-1 min-h-0 flex items-center justify-center relative p-3 sm:p-4 md:p-8 lg:p-10 pb-20 md:pb-24 overflow-hidden">
         <div className="w-full h-full max-w-7xl animate-scale-in">
           <MacWindow 
-            title={editingId ? "EDITOR MODE" : (view === 'list' ? "GALERI DOKUMENTASI" : "ENTRY DATA BARU")}
+            title={getWindowTitle()}
             brand={
               <div className="flex items-center gap-2">
                 <School size={16} strokeWidth={3} className="text-[#007AFF]" />
@@ -349,7 +364,19 @@ const App: React.FC = () => {
               </div>
             ) : (
               view === 'list' ? (
-                <DocList items={items} onEdit={(item) => { setEditingId(item.id); setView('form'); }} onDelete={initiateDelete} onDownload={handleDownload} />
+                <DocList 
+                  items={items} 
+                  onEdit={(item) => { setEditingId(item.id); setView('form'); }} 
+                  onView={handleViewDetail}
+                  onDelete={initiateDelete} 
+                  onDownload={handleDownload} 
+                />
+              ) : view === 'detail' && detailItem ? (
+                <DocDetail 
+                  item={detailItem} 
+                  onBack={() => setView('list')} 
+                  onDownload={handleDownload} 
+                />
               ) : (
                 <DocForm onSubmit={editingId ? handleUpdate : handleAdd} onCancel={() => setView('list')} initialData={editingItem} />
               )

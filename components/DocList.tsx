@@ -1,15 +1,16 @@
 import React, { useState, useMemo } from 'react';
-import { Edit2, Trash2, Download, Image as ImageIcon, FileType, Search, X, ChevronRight, ChevronLeft, CalendarDays, Filter } from 'lucide-react';
+import { Edit2, Trash2, Download, Image as ImageIcon, FileType, Search, X, ChevronRight, ChevronLeft, CalendarDays, Filter, Eye } from 'lucide-react';
 import { DocumentationItem } from '../types.ts';
 
 interface DocListProps {
   items: DocumentationItem[];
   onEdit: (item: DocumentationItem) => void;
+  onView: (item: DocumentationItem) => void;
   onDelete: (id: string) => void;
   onDownload: (item: DocumentationItem) => void;
 }
 
-export const DocList: React.FC<DocListProps> = ({ items, onEdit, onDelete, onDownload }) => {
+export const DocList: React.FC<DocListProps> = ({ items, onEdit, onView, onDelete, onDownload }) => {
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedYear, setSelectedYear] = useState<string | null>(null);
 
@@ -129,30 +130,33 @@ export const DocList: React.FC<DocListProps> = ({ items, onEdit, onDelete, onDow
                         const imageFiles = item.files.filter(f => f.type === 'image');
                         return (
                           <div key={item.id} className="group flex flex-col bg-white rounded-[2rem] shadow-sm hover:shadow-2xl hover:-translate-y-1.5 transition-all duration-500 ring-1 ring-black/5 overflow-hidden animate-scale-in">
-                            <div className="relative aspect-[4/3] bg-gray-50 overflow-hidden">
+                            <div 
+                              className="relative aspect-[4/3] bg-gray-50 overflow-hidden cursor-pointer"
+                              onClick={() => onView(item)}
+                            >
                               {imageFiles.length > 0 ? (
                                 <img src={imageFiles[0].url} className="h-full w-full object-cover transition-transform duration-700 group-hover:scale-110" loading="lazy" />
                               ) : (
                                 <div className="h-full w-full flex items-center justify-center text-gray-300"><ImageIcon size={48} strokeWidth={1} /></div>
                               )}
                               
-                              {/* Action Buttons Overlay - Simplified event handling */}
+                              {/* Action Buttons Overlay */}
                               <div className="absolute inset-0 z-20 bg-black/40 opacity-100 md:opacity-0 md:group-hover:opacity-100 transition-opacity flex items-center justify-center gap-3 pointer-events-none">
                                 <button 
                                   type="button"
-                                  onClick={(e) => { e.stopPropagation(); onEdit(item); }} 
+                                  onClick={(e) => { e.stopPropagation(); onView(item); }} 
                                   className="p-3 bg-white rounded-xl shadow-xl hover:scale-110 active:scale-95 transition-all text-blue-600 cursor-pointer pointer-events-auto z-30" 
-                                  title="Edit"
+                                  title="Lihat Detail"
                                 >
-                                  <Edit2 size={18} strokeWidth={3} />
+                                  <Eye size={18} strokeWidth={3} />
                                 </button>
                                 <button 
                                   type="button"
-                                  onClick={(e) => { e.stopPropagation(); onDownload(item); }} 
-                                  className="p-3 bg-white rounded-xl shadow-xl hover:scale-110 active:scale-95 transition-all text-emerald-600 cursor-pointer pointer-events-auto z-30" 
-                                  title="Download Foto"
+                                  onClick={(e) => { e.stopPropagation(); onEdit(item); }} 
+                                  className="p-3 bg-white rounded-xl shadow-xl hover:scale-110 active:scale-95 transition-all text-orange-500 cursor-pointer pointer-events-auto z-30" 
+                                  title="Edit"
                                 >
-                                  <Download size={18} strokeWidth={3} />
+                                  <Edit2 size={18} strokeWidth={3} />
                                 </button>
                                 <button 
                                   type="button"
@@ -181,7 +185,7 @@ export const DocList: React.FC<DocListProps> = ({ items, onEdit, onDelete, onDow
                               
                               <button 
                                 type="button"
-                                onClick={(e) => { e.stopPropagation(); onEdit(item); }}
+                                onClick={(e) => { e.stopPropagation(); onView(item); }}
                                 className="mt-6 flex items-center gap-2 text-xs font-black text-blue-600 hover:gap-3 transition-all w-fit"
                               >
                                 LIHAT DETAIL <ChevronRight size={14} strokeWidth={3} />
