@@ -228,26 +228,32 @@ const App: React.FC = () => {
   };
 
   const handleDelete = async (id: string) => {
-    const password = prompt('Masukkan Sandi Admin untuk menghapus data:');
-    // Cek password dengan trim() untuk menghindari spasi tak sengaja
-    if (password && password.trim() === 'admin123') {
-      if (window.confirm('Apakah Anda yakin ingin menghapus dokumentasi ini selamanya?')) {
-        const itemToDelete = items.find(i => i.id === id);
-        // Hapus dari state dulu (Optimistic UI)
-        const newItems = items.filter(item => item.id !== id);
-        setItems(newItems);
+    // Gunakan setTimeout agar tombol klik selesai dieksekusi UI sebelum prompt muncul
+    setTimeout(async () => {
+        const password = prompt('Masukkan Sandi Admin untuk menghapus data:');
         
-        // Hapus dari Local DB
-        await removeFromLocalDB(id);
-        
-        // Hapus dari Cloud
-        if (itemToDelete) {
-          syncToSpreadsheet(itemToDelete, 'delete').catch(console.error);
+        if (password && password.trim() === 'admin123') {
+            // Jeda sedikit sebelum confirm agar tidak bentrok
+            setTimeout(async () => {
+                if (window.confirm('Apakah Anda yakin ingin menghapus dokumentasi ini selamanya?')) {
+                    const itemToDelete = items.find(i => i.id === id);
+                    // Hapus dari state dulu (Optimistic UI)
+                    const newItems = items.filter(item => item.id !== id);
+                    setItems(newItems);
+                    
+                    // Hapus dari Local DB
+                    await removeFromLocalDB(id);
+                    
+                    // Hapus dari Cloud
+                    if (itemToDelete) {
+                      syncToSpreadsheet(itemToDelete, 'delete').catch(console.error);
+                    }
+                }
+            }, 100);
+        } else if (password !== null) {
+          alert('Sandi salah. Akses ditolak.');
         }
-      }
-    } else if (password !== null) {
-      alert('Sandi salah. Akses ditolak.');
-    }
+    }, 50);
   };
 
   const handleDownload = (item: DocumentationItem) => {

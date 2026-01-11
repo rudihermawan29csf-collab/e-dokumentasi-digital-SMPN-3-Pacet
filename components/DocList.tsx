@@ -49,6 +49,7 @@ export const DocList: React.FC<DocListProps> = ({ items, onEdit, onDelete, onDow
         <h3 className="text-[11px] font-black uppercase tracking-[0.2em] text-[#8E8E93] mb-6">Pustaka Waktu</h3>
         <nav className="space-y-1">
           <button 
+            type="button"
             onClick={() => setSelectedYear(null)}
             className={`w-full text-left px-4 py-2.5 rounded-xl text-sm font-bold transition-all ${!selectedYear ? 'bg-white text-blue-600 shadow-sm ring-1 ring-black/5' : 'text-gray-600 hover:bg-black/5'}`}
           >
@@ -57,6 +58,7 @@ export const DocList: React.FC<DocListProps> = ({ items, onEdit, onDelete, onDow
           {years.map(year => (
             <button 
               key={year}
+              type="button"
               onClick={() => setSelectedYear(year)}
               className={`w-full text-left px-4 py-2.5 rounded-xl text-sm font-bold transition-all ${selectedYear === year ? 'bg-white text-blue-600 shadow-sm ring-1 ring-black/5' : 'text-gray-600 hover:bg-black/5'}`}
             >
@@ -134,32 +136,41 @@ export const DocList: React.FC<DocListProps> = ({ items, onEdit, onDelete, onDow
                                 <div className="h-full w-full flex items-center justify-center text-gray-300"><ImageIcon size={48} strokeWidth={1} /></div>
                               )}
                               
-                              {/* Action Buttons Overlay - Adjusted for better mobile touch response and z-index */}
-                              <div className="absolute inset-0 z-20 bg-black/40 opacity-100 md:opacity-0 md:group-hover:opacity-100 transition-opacity flex items-center justify-center gap-3 backdrop-blur-[2px]">
+                              {/* 
+                                  FIX APPLIED: 
+                                  1. pointer-events-none on container to let clicks pass if needed
+                                  2. pointer-events-auto on buttons to catch clicks forcefully
+                                  3. Removed backdrop-blur from container to avoid hit-test bugs in some browsers
+                                  4. High z-index to ensure it sits on top of everything
+                              */}
+                              <div className="absolute inset-0 z-20 bg-black/40 opacity-100 md:opacity-0 md:group-hover:opacity-100 transition-opacity flex items-center justify-center gap-3 pointer-events-none">
                                 <button 
+                                  type="button"
                                   onClick={(e) => { e.preventDefault(); e.stopPropagation(); onEdit(item); }} 
-                                  className="p-3 bg-white rounded-xl shadow-xl hover:scale-110 active:scale-95 transition-all text-blue-600 cursor-pointer z-30" 
+                                  className="p-3 bg-white rounded-xl shadow-xl hover:scale-110 active:scale-95 transition-all text-blue-600 cursor-pointer pointer-events-auto z-30" 
                                   title="Edit"
                                 >
                                   <Edit2 size={18} strokeWidth={3} />
                                 </button>
                                 <button 
+                                  type="button"
                                   onClick={(e) => { e.preventDefault(); e.stopPropagation(); onDownload(item); }} 
-                                  className="p-3 bg-white rounded-xl shadow-xl hover:scale-110 active:scale-95 transition-all text-emerald-600 cursor-pointer z-30" 
+                                  className="p-3 bg-white rounded-xl shadow-xl hover:scale-110 active:scale-95 transition-all text-emerald-600 cursor-pointer pointer-events-auto z-30" 
                                   title="Download Foto"
                                 >
                                   <Download size={18} strokeWidth={3} />
                                 </button>
                                 <button 
+                                  type="button"
                                   onClick={(e) => { e.preventDefault(); e.stopPropagation(); onDelete(item.id); }} 
-                                  className="p-3 bg-red-500 rounded-xl shadow-xl hover:scale-110 active:scale-95 transition-all text-white cursor-pointer z-30" 
+                                  className="p-3 bg-red-500 rounded-xl shadow-xl hover:bg-red-600 transition-colors text-white cursor-pointer pointer-events-auto z-30" 
                                   title="Hapus"
                                 >
                                   <Trash2 size={18} strokeWidth={3} />
                                 </button>
                               </div>
 
-                              <div className="absolute bottom-4 right-4 flex items-center gap-2 md:opacity-100 opacity-0 transition-opacity z-10">
+                              <div className="absolute bottom-4 right-4 flex items-center gap-2 md:opacity-100 opacity-0 transition-opacity z-10 pointer-events-none">
                                 <span className="bg-black/60 backdrop-blur-md text-white text-[10px] font-black px-3 py-1.5 rounded-xl border border-white/10 flex items-center gap-1.5">
                                   <ImageIcon size={12} /> {imageFiles.length}
                                 </span>
@@ -175,6 +186,7 @@ export const DocList: React.FC<DocListProps> = ({ items, onEdit, onDelete, onDow
                               <p className="mt-2 text-sm font-medium text-gray-500 line-clamp-2 leading-relaxed italic">{item.description || 'Kegiatan sekolah...'}</p>
                               
                               <button 
+                                type="button"
                                 onClick={(e) => { e.stopPropagation(); onEdit(item); }}
                                 className="mt-6 flex items-center gap-2 text-xs font-black text-blue-600 hover:gap-3 transition-all w-fit"
                               >
