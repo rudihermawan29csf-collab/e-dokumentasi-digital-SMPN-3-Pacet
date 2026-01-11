@@ -134,39 +134,39 @@ export const DocList: React.FC<DocListProps> = ({ items, onEdit, onDelete, onDow
                                 <div className="h-full w-full flex items-center justify-center text-gray-300"><ImageIcon size={48} strokeWidth={1} /></div>
                               )}
                               
-                              {/* Action Buttons Overlay - Always visible on mobile/tablet, hover on desktop */}
-                              <div className="absolute inset-0 bg-black/40 opacity-100 md:opacity-0 md:group-hover:opacity-100 transition-opacity flex items-center justify-center gap-3 backdrop-blur-[2px]">
+                              {/* Action Buttons Overlay - Adjusted for better mobile touch response and z-index */}
+                              <div className="absolute inset-0 z-20 bg-black/40 opacity-100 md:opacity-0 md:group-hover:opacity-100 transition-opacity flex items-center justify-center gap-3 backdrop-blur-[2px]">
                                 <button 
-                                  onClick={(e) => { e.stopPropagation(); onEdit(item); }} 
-                                  className="p-3 bg-white rounded-xl shadow-xl hover:scale-110 active:scale-95 transition-all text-blue-600" 
+                                  onClick={(e) => { e.preventDefault(); e.stopPropagation(); onEdit(item); }} 
+                                  className="p-3 bg-white rounded-xl shadow-xl hover:scale-110 active:scale-95 transition-all text-blue-600 cursor-pointer z-30" 
                                   title="Edit"
                                 >
                                   <Edit2 size={18} strokeWidth={3} />
                                 </button>
                                 <button 
-                                  onClick={(e) => { e.stopPropagation(); onDownload(item); }} 
-                                  className="p-3 bg-white rounded-xl shadow-xl hover:scale-110 active:scale-95 transition-all text-emerald-600" 
+                                  onClick={(e) => { e.preventDefault(); e.stopPropagation(); onDownload(item); }} 
+                                  className="p-3 bg-white rounded-xl shadow-xl hover:scale-110 active:scale-95 transition-all text-emerald-600 cursor-pointer z-30" 
                                   title="Download Foto"
                                 >
                                   <Download size={18} strokeWidth={3} />
                                 </button>
                                 <button 
-                                  onClick={(e) => { e.stopPropagation(); onDelete(item.id); }} 
-                                  className="p-3 bg-red-500 rounded-xl shadow-xl hover:scale-110 active:scale-95 transition-all text-white" 
+                                  onClick={(e) => { e.preventDefault(); e.stopPropagation(); onDelete(item.id); }} 
+                                  className="p-3 bg-red-500 rounded-xl shadow-xl hover:scale-110 active:scale-95 transition-all text-white cursor-pointer z-30" 
                                   title="Hapus"
                                 >
                                   <Trash2 size={18} strokeWidth={3} />
                                 </button>
                               </div>
 
-                              <div className="absolute bottom-4 right-4 flex items-center gap-2 md:opacity-100 opacity-0 transition-opacity">
+                              <div className="absolute bottom-4 right-4 flex items-center gap-2 md:opacity-100 opacity-0 transition-opacity z-10">
                                 <span className="bg-black/60 backdrop-blur-md text-white text-[10px] font-black px-3 py-1.5 rounded-xl border border-white/10 flex items-center gap-1.5">
                                   <ImageIcon size={12} /> {imageFiles.length}
                                 </span>
                               </div>
                             </div>
                             
-                            <div className="p-6 flex flex-col flex-1">
+                            <div className="p-6 flex flex-col flex-1 relative z-10 bg-white">
                               <div className="flex items-center justify-between mb-3">
                                 <span className="text-[10px] font-black text-gray-400 uppercase tracking-widest">{new Date(item.date).toLocaleDateString('id-ID', { day: '2-digit', month: 'long' })}</span>
                                 <span className="text-[9px] font-black text-gray-300">#{item.id.split('-')[1]?.substring(0,6)}</span>
@@ -176,7 +176,7 @@ export const DocList: React.FC<DocListProps> = ({ items, onEdit, onDelete, onDow
                               
                               <button 
                                 onClick={(e) => { e.stopPropagation(); onEdit(item); }}
-                                className="mt-6 flex items-center gap-2 text-xs font-black text-blue-600 hover:gap-3 transition-all"
+                                className="mt-6 flex items-center gap-2 text-xs font-black text-blue-600 hover:gap-3 transition-all w-fit"
                               >
                                 LIHAT DETAIL <ChevronRight size={14} strokeWidth={3} />
                               </button>
