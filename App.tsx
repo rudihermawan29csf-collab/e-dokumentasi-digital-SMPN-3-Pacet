@@ -14,7 +14,9 @@ import {
   CheckCircle2,
   RefreshCw,
   AlertCircle,
-  X
+  X,
+  Trash2,
+  Lock
 } from 'lucide-react';
 
 const SCRIPT_URL = "https://script.google.com/macros/s/AKfycbwS_ZiNHJH214i_u8AF7BuZWXZopIG6YThNr96jx5pAJ_z7HBI0W0wuCER7ea1xEzQulw/exec"; 
@@ -108,6 +110,11 @@ const App: React.FC = () => {
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [showDiagnostic, setShowDiagnostic] = useState(false);
+  
+  // State untuk Modal Delete Kustom
+  const [deleteTargetId, setDeleteTargetId] = useState<string | null>(null);
+  const [deletePassword, setDeletePassword] = useState('');
+  const [deleteError, setDeleteError] = useState('');
   
   const recentlyAddedIds = useRef<Set<string>>(new Set());
 
@@ -227,33 +234,33 @@ const App: React.FC = () => {
     }
   };
 
-  const handleDelete = async (id: string) => {
-    // Gunakan setTimeout agar tombol klik selesai dieksekusi UI sebelum prompt muncul
-    setTimeout(async () => {
-        const password = prompt('Masukkan Sandi Admin untuk menghapus data:');
-        
-        if (password && password.trim() === 'admin123') {
-            // Jeda sedikit sebelum confirm agar tidak bentrok
-            setTimeout(async () => {
-                if (window.confirm('Apakah Anda yakin ingin menghapus dokumentasi ini selamanya?')) {
-                    const itemToDelete = items.find(i => i.id === id);
-                    // Hapus dari state dulu (Optimistic UI)
-                    const newItems = items.filter(item => item.id !== id);
-                    setItems(newItems);
-                    
-                    // Hapus dari Local DB
-                    await removeFromLocalDB(id);
-                    
-                    // Hapus dari Cloud
-                    if (itemToDelete) {
-                      syncToSpreadsheet(itemToDelete, 'delete').catch(console.error);
-                    }
-                }
-            }, 100);
-        } else if (password !== null) {
-          alert('Sandi salah. Akses ditolak.');
-        }
-    }, 50);
+  // Trigger untuk membuka modal delete
+  const initiateDelete = (id: string) => {
+    setDeleteTargetId(id);
+    setDeletePassword('');
+    setDeleteError('');
+  };
+
+  // Eksekusi hapus setelah konfirmasi password di modal
+  const confirmDelete = async () => {
+    if (deletePassword.trim() === 'admin123') {
+      const id = deleteTargetId;
+      if (!id) return;
+
+      const itemToDelete = items.find(i => i.id === id);
+      const newItems = items.filter(item => item.id !== id);
+      setItems(newItems);
+      
+      await removeFromLocalDB(id);
+      
+      if (itemToDelete) {
+        syncToSpreadsheet(itemToDelete, 'delete').catch(console.error);
+      }
+      
+      setDeleteTargetId(null);
+    } else {
+      setDeleteError('Sandi salah!');
+    }
   };
 
   const handleDownload = (item: DocumentationItem) => {
@@ -277,7 +284,7 @@ const App: React.FC = () => {
   return (
     <div className="flex flex-col h-screen w-screen font-sans overflow-hidden bg-gradient-to-br from-[#1e3a8a] via-[#581c87] to-[#1e1b4b] relative">
       
-      {/* Global Menu Bar - Simplified for Minimalist Look */}
+      {/* Global Menu Bar */}
       <header className="flex-none z-[100] flex h-8 items-center justify-between bg-black/20 px-4 text-[13px] font-bold text-white backdrop-blur-3xl border-b border-white/5">
         <div className="flex items-center gap-4">
           <div className="hover:bg-white/10 px-2 py-0.5 rounded cursor-default transition-colors">
@@ -342,7 +349,7 @@ const App: React.FC = () => {
               </div>
             ) : (
               view === 'list' ? (
-                <DocList items={items} onEdit={(item) => { setEditingId(item.id); setView('form'); }} onDelete={handleDelete} onDownload={handleDownload} />
+                <DocList items={items} onEdit={(item) => { setEditingId(item.id); setView('form'); }} onDelete={initiateDelete} onDownload={handleDownload} />
               ) : (
                 <DocForm onSubmit={editingId ? handleUpdate : handleAdd} onCancel={() => setView('list')} initialData={editingItem} />
               )
@@ -372,6 +379,57 @@ const App: React.FC = () => {
             <p className={`text-xs font-bold ${error ? 'text-red-600' : 'text-green-600'}`}>{error ? 'Terputus' : 'Aktif'}</p>
           </div>
           <button onClick={() => { fetchDataFromCloud(); setShowDiagnostic(false); }} className="w-full bg-blue-600 text-white text-[11px] font-black py-3 rounded-2xl hover:bg-blue-700 shadow-xl shadow-blue-500/30 uppercase transition-all active:scale-95">Refresh Cloud</button>
+        </div>
+      )}
+
+      {/* MODAL KONFIRMASI DELETE KUSTOM */}
+      {deleteTargetId && (
+        <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/50 backdrop-blur-sm p-4 animate-fade-in" onClick={() => setDeleteTargetId(null)}>
+          <div className="w-full max-w-sm bg-white/95 backdrop-blur-xl rounded-3xl shadow-2xl p-6 border border-white/20 ring-1 ring-black/10 scale-100 animate-scale-in" onClick={e => e.stopPropagation()}>
+            <div className="text-center mb-6">
+              <div className="mx-auto w-14 h-14 bg-red-100 rounded-2xl flex items-center justify-center mb-4 shadow-inner">
+                <Trash2 className="text-red-500" size={28} />
+              </div>
+              <h3 className="text-lg font-black text-gray-900 tracking-tight">Hapus Dokumentasi?</h3>
+              <p className="text-xs font-medium text-gray-500 mt-2 px-4 leading-relaxed">
+                Tindakan ini tidak dapat dibatalkan. Data akan dihapus dari arsip sekolah secara permanen.
+              </p>
+            </div>
+            
+            <div className="relative mb-4">
+              <Lock className="absolute left-3.5 top-1/2 -translate-y-1/2 text-gray-400" size={16} />
+              <input 
+                type="password" 
+                placeholder="Masukkan Sandi Admin"
+                value={deletePassword}
+                onChange={(e) => setDeletePassword(e.target.value)}
+                className="w-full bg-gray-100 border-none rounded-xl pl-10 pr-4 py-3.5 text-sm font-bold focus:bg-white focus:ring-4 focus:ring-red-500/20 transition-all outline-none"
+                autoFocus
+              />
+            </div>
+            
+            {deleteError && (
+              <div className="flex items-center gap-2 justify-center mb-4 text-red-500 bg-red-50 py-2 rounded-lg">
+                <AlertCircle size={14} />
+                <span className="text-[10px] font-black uppercase tracking-wide">{deleteError}</span>
+              </div>
+            )}
+            
+            <div className="grid grid-cols-2 gap-3 mt-2">
+              <button 
+                onClick={() => setDeleteTargetId(null)} 
+                className="py-3 rounded-xl bg-gray-100 text-xs font-black text-gray-600 hover:bg-gray-200 transition-colors uppercase tracking-wide"
+              >
+                Batal
+              </button>
+              <button 
+                onClick={confirmDelete} 
+                className="py-3 rounded-xl bg-red-500 text-xs font-black text-white hover:bg-red-600 transition-all shadow-lg shadow-red-500/30 uppercase tracking-wide hover:scale-[1.02] active:scale-95"
+              >
+                Ya, Hapus
+              </button>
+            </div>
+          </div>
         </div>
       )}
     </div>

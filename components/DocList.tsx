@@ -136,17 +136,11 @@ export const DocList: React.FC<DocListProps> = ({ items, onEdit, onDelete, onDow
                                 <div className="h-full w-full flex items-center justify-center text-gray-300"><ImageIcon size={48} strokeWidth={1} /></div>
                               )}
                               
-                              {/* 
-                                  FIX APPLIED: 
-                                  1. pointer-events-none on container to let clicks pass if needed
-                                  2. pointer-events-auto on buttons to catch clicks forcefully
-                                  3. Removed backdrop-blur from container to avoid hit-test bugs in some browsers
-                                  4. High z-index to ensure it sits on top of everything
-                              */}
+                              {/* Action Buttons Overlay - Simplified event handling */}
                               <div className="absolute inset-0 z-20 bg-black/40 opacity-100 md:opacity-0 md:group-hover:opacity-100 transition-opacity flex items-center justify-center gap-3 pointer-events-none">
                                 <button 
                                   type="button"
-                                  onClick={(e) => { e.preventDefault(); e.stopPropagation(); onEdit(item); }} 
+                                  onClick={(e) => { e.stopPropagation(); onEdit(item); }} 
                                   className="p-3 bg-white rounded-xl shadow-xl hover:scale-110 active:scale-95 transition-all text-blue-600 cursor-pointer pointer-events-auto z-30" 
                                   title="Edit"
                                 >
@@ -154,7 +148,7 @@ export const DocList: React.FC<DocListProps> = ({ items, onEdit, onDelete, onDow
                                 </button>
                                 <button 
                                   type="button"
-                                  onClick={(e) => { e.preventDefault(); e.stopPropagation(); onDownload(item); }} 
+                                  onClick={(e) => { e.stopPropagation(); onDownload(item); }} 
                                   className="p-3 bg-white rounded-xl shadow-xl hover:scale-110 active:scale-95 transition-all text-emerald-600 cursor-pointer pointer-events-auto z-30" 
                                   title="Download Foto"
                                 >
@@ -162,7 +156,7 @@ export const DocList: React.FC<DocListProps> = ({ items, onEdit, onDelete, onDow
                                 </button>
                                 <button 
                                   type="button"
-                                  onClick={(e) => { e.preventDefault(); e.stopPropagation(); onDelete(item.id); }} 
+                                  onClick={(e) => { e.stopPropagation(); onDelete(item.id); }} 
                                   className="p-3 bg-red-500 rounded-xl shadow-xl hover:bg-red-600 transition-colors text-white cursor-pointer pointer-events-auto z-30" 
                                   title="Hapus"
                                 >
